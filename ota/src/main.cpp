@@ -26,6 +26,44 @@ using namespace rapidjson;
 string posturl = "http://47.111.88.91:6096/iot/data/receive";
 
 
+int GetMacAddress(char* mac, int len)
+{
+	FILE *fp = NULL;
+	int ret = -1;
+	char mac_t[32] = {0};
+	int i,j;
+	
+	fp = fopen("/sys/class/net/wlan0/address","r");
+	if(fp==NULL){
+		std::cout << "GetMacAddress open file failed!" << std::endl;
+		return -1;
+	}
+	
+	ret = fread(mac_t,1,17,fp);
+	if(ret < 0){
+		std::cout << "GetMacAddress open file failed!" << std::endl;
+		fclose(fp);
+		return -1;
+	}
+	
+	for(i = 0, j = 0; mac_t[i] != 0; i++){
+		if (mac_t[i] != ':') {
+			if (mac_t[i] >= 'A' && mac_t[i] <= 'Z'){
+				mac_t[j++] = mac_t[i]-'A' + 'a';				
+			}else {
+				mac_t[j++] = mac_t[i];
+			}		
+		}
+	}	
+	mac_t[j] = '\0';
+	strncpy(mac, mac_t, len);
+	
+	std::cout << "GetMacAddress open file failed!" << mac << std::endl;
+	fclose(fp);
+
+	return 0;
+}
+
 
 void *myHttp_run(void *para){
 	mycurl::my_curl::curl_base curl;
