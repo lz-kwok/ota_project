@@ -1,7 +1,7 @@
 PROJECT_DIR := $(shell pwd)
 
-CC = arm-linux-gnueabihf-g++
-
+# CC = arm-linux-gnueabihf-g++
+CC = g++
 
 DIR_INC = $(PROJECT_DIR)/inc
 DIR_SRC = $(PROJECT_DIR)/src

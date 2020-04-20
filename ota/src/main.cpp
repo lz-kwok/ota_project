@@ -8,7 +8,8 @@
 #include <vector>
 #include <signal.h>
 #include <list>
-#include <curl/curl.h>
+// #include <curl/curl.h>
+#include <curl64/curl.h>
 
 #include "curl_base.hpp"
 #include "myHttp_curl.hpp"
@@ -23,8 +24,20 @@ using namespace mycurl;
 using namespace CURL_BASE;
 using namespace rapidjson;
 
+#define downLoad_url 	"http://47.111.88.91:6096/downloadExample/update.tar.gz"
+#define downLoad_file 	"/home/myDevelop/ota_project/ota/bin/update.tar.gz"
+
 string posturl = "http://47.111.88.91:6096/iot/data/receive";
 
+void CB(const MemoryStruct &m)
+{
+    static int cnt = 0;
+    printf("CB: cnt:%d, %lu bytes retrieved\n", cnt++, (long)m.size);
+	FILE* fp = NULL;  
+    fopen("/home/myDevelop/ota_project/ota/bin/update.tar.gz", "wb+");  
+    size_t nWrite = fwrite(m.memory, 1, m.size, fp);  
+    fclose(fp);
+}
 
 int GetMacAddress(char* mac, int len)
 {
@@ -33,7 +46,7 @@ int GetMacAddress(char* mac, int len)
 	char mac_t[32] = {0};
 	int i,j;
 	
-	fp = fopen("/sys/class/net/wlan0/address","r");
+	fp = fopen("/sys/class/net/wlp5s0/address","r");
 	if(fp==NULL){
 		std::cout << "GetMacAddress open file failed!" << std::endl;
 		return -1;
@@ -58,7 +71,7 @@ int GetMacAddress(char* mac, int len)
 	mac_t[j] = '\0';
 	strncpy(mac, mac_t, len);
 	
-	std::cout << "GetMacAddress open file failed!" << mac << std::endl;
+	std::cout << "GetMacAddress  " << mac << std::endl;
 	fclose(fp);
 
 	return 0;
@@ -68,54 +81,63 @@ int GetMacAddress(char* mac, int len)
 void *myHttp_run(void *para){
 	mycurl::my_curl::curl_base curl;
 	mycurl::my_curl curl_origin;
+	char mac[64];	
+	memset(mac, 0x0, 64);
+	GetMacAddress(mac, 64);
+
+	curl.Download(downLoad_url,downLoad_file);
+	curl.DownloadFinish();
 	while(1){		
-			StringBuffer TEXT;
-			Writer<StringBuffer> writer(TEXT);
-			writer.StartObject();
-			writer.Key("appkey");
-			writer.String("tian jin B1 line");
-			writer.Key("devicename");
-			writer.String("BMS");
-			writer.Key("devicekey");
-			writer.Int(1);
+			
 
-			writer.Key("header");
-			writer.StartObject();
-			writer.Key("namespaceme");
-			writer.String("0");
-			writer.Key("version");
-			writer.String("1.0");
-    		writer.EndObject();
+		// StringBuffer TEXT;
+		// Writer<StringBuffer> writer(TEXT);
+		// writer.StartObject();
+		// writer.Key("appkey");
+		// writer.String("tian jin B1 line");
+		// writer.Key("devicename");
+		// writer.String("BMS");
+		// writer.Key("devicekey");
+		// writer.Int(1);
 
-			writer.Key("payload");
-			writer.StartObject();
-			writer.Key("bat_volt");
-			writer.Int(222);
-			writer.Key("bat_soc");
-			writer.Int(333);
-			writer.Key("bat_min_volt");
-			writer.Int(444);
-			writer.Key("bcC_underV");
-			writer.Double(12.34567);
-    		writer.EndObject();
+		// writer.Key("header");
+		// writer.StartObject();
+		// writer.Key("namespaceme");
+		// writer.String("0");
+		// writer.Key("version");
+		// writer.String("1.0");
+		// writer.EndObject();
 
-			writer.Key("uptime");
-			writer.String("2019-06-05 17:33:38");
+		// writer.Key("payload");
+		// writer.StartObject();
+		// writer.Key("bat_volt");
+		// writer.Int(222);
+		// writer.Key("bat_soc");
+		// writer.Int(333);
+		// writer.Key("bat_min_volt");
+		// writer.Int(444);
+		// writer.Key("bcC_underV");
+		// writer.Double(12.34567);
+		// writer.EndObject();
 
-			writer.EndObject();
-			string jsonContext = TEXT.GetString();
-			std::cout << "============jsonContext============" << jsonContext << std::endl;
+		// writer.Key("uptime");
+		// writer.String("2019-06-05 17:33:38");
 
-			string Response;
-			std::list<std::string> slist{("Content-Type:application/json;charset=UTF-8")};
-			CURLcode code = curl.curl_post_req(posturl,jsonContext, Response, slist, true, 10, 10);
-			cout << "code:" << code << endl;
-			cout << "Response:" << Response << endl;
+		// writer.EndObject();
+		// string jsonContext = TEXT.GetString();
+		// std::cout << "============jsonContext============" << jsonContext << std::endl;
+
+		// string Response;
+		// std::list<std::string> slist{("Content-Type:application/json;charset=UTF-8")};
+		// CURLcode code = curl.curl_post_req(posturl,jsonContext, Response, slist, true, 10, 10);
+		// cout << "code:" << code << endl;
+		// cout << "Response:" << Response << endl;
 
 
-			sleep(20);
-		}
-
+		sleep(2);
+		printf("%s\r\n",__func__);
+	}
+	// curl.DownloadFinish();
 }
 
 

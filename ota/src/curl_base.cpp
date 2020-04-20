@@ -6,11 +6,14 @@
 #include <time.h>
 #include <vector>
 #include <signal.h>
-#include <curl/curl.h>
+// #include <curl/curl.h>
+#include <curl64/curl.h>
 #include <list>
 #include "curl_base.hpp"
 
 using namespace std;
+
+
 
 namespace CURL_BASE{
 
@@ -20,7 +23,7 @@ curl_base::curl_base(void)
 }
 
 
-size_t req_reply(void *ptr, size_t size, size_t nmemb, void *stream)
+size_t req_reply(void *ptr, size_t size, size_t nmemb, FILE *stream)
 {
     if (stream == NULL || ptr == NULL || size == 0)
         return 0;
@@ -31,6 +34,8 @@ size_t req_reply(void *ptr, size_t size, size_t nmemb, void *stream)
     {
         buffer->append((const char *)ptr, realsize);
     }
+
+    size_t nWrite = fwrite(ptr, 1, nmemb, stream);  
     return realsize;
     /*
     std::string *str = (std::string*)stream;
@@ -39,6 +44,24 @@ size_t req_reply(void *ptr, size_t size, size_t nmemb, void *stream)
     */
 }
 
+
+static size_t OnDownLoadFile(void* buffer,size_t size, size_t nmemb,void* fp)
+{
+   fwrite(buffer, size, nmemb, (FILE*)fp);
+   fflush((FILE*)fp);
+
+   return (size*nmemb);
+}
+
+static int my_progress_func(char *progress_data,
+                     double t, /* dltotal */
+                     double d, /* dlnow */
+                     double ultotal,
+                     double ulnow)
+{
+  printf("%s %g / %g (%g %%)\n", progress_data, d, t, d*100.0/t);
+  return 0;
+}
 
 CURLcode curl_base::curl_get_req(const std::string &url, std::string &response,std::list<std::string> listRequestHeader,
 						bool bResponseIsWithHeaderData , int nConnectTimeout, int nTimeout)
@@ -168,6 +191,56 @@ CURLcode curl_base::curl_post_req(const std::string &url, const std::string &pos
 
 void curl_base::private_post_print(void){
     cout << "private_post_print:this is a post test" << endl;
+}
+
+
+
+CURLcode curl_base::Download(std::string strUrl,std::string filepath)
+{
+    CURLcode res;
+    char *progress_data = "* ";  
+    FILE* fp = fopen(filepath.c_str(),"wb+");
+
+    curl_handle = curl_easy_init();
+
+    /* send all data to this function */
+    curl_easy_setopt(curl_handle, CURLOPT_WRITEFUNCTION, OnDownLoadFile);
+    /* we pass our 'chunk' struct to the callback function */
+    curl_easy_setopt(curl_handle, CURLOPT_WRITEDATA, (void *)fp);
+    curl_easy_setopt(curl_handle, CURLOPT_PROGRESSFUNCTION, my_progress_func);  
+    curl_easy_setopt(curl_handle, CURLOPT_PROGRESSDATA, progress_data);
+
+    curl_easy_setopt(curl_handle, CURLOPT_FOLLOWLOCATION, 1);
+    curl_easy_setopt(curl_handle, CURLOPT_SSL_VERIFYPEER, 0L);
+    curl_easy_setopt(curl_handle, CURLOPT_SSL_VERIFYHOST, 0L);
+
+    curl_easy_setopt(curl_handle,CURLOPT_RESUME_FROM,0);  //从0字节开始下载
+    /* 设置连接超时,单位:毫秒 */
+    curl_easy_setopt(curl_handle, CURLOPT_CONNECTTIMEOUT_MS, 10000L);
+    curl_easy_setopt(curl_handle, CURLOPT_TIMEOUT_MS, 10000L);
+    curl_easy_setopt(curl_handle, CURLOPT_NOSIGNAL, 3);
+    curl_easy_setopt(curl_handle, CURLOPT_URL, const_cast<char*>(strUrl.c_str()));
+
+
+    /* get it! */
+    res = curl_easy_perform(curl_handle);
+    /* check for errors */
+    if (res != CURLE_OK) {
+        fprintf(stderr, "curl_easy_perform() failed: %s\n", curl_easy_strerror(res));
+    }
+
+    fclose(fp);
+
+    return res;
+}
+
+void curl_base::DownloadFinish()
+{
+    /* cleanup curl stuff */
+    curl_easy_cleanup(curl_handle);
+    // free(chunk.memory);
+    /* we're done with libcurl, so clean it up */
+    // curl_global_cleanup();
 }
 
 }

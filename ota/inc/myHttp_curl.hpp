@@ -17,6 +17,8 @@ public:
 	CURLcode CURL_Post_Req(const std::string &url, const std::string &postParams, std::string &response, std::list<std::string> listRequestHeader, 
 							bool bResponseIsWithHeaderData , int nConnectTimeout, int nTimeout);
 
+	CURLcode Download(std::string strUrl,std::string filepath);
+
 	my_curl();
 //private:
 	
