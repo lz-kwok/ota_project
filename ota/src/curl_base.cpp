@@ -207,6 +207,8 @@ CURLcode curl_base::Download(std::string strUrl,std::string filepath)
     curl_easy_setopt(curl_handle, CURLOPT_WRITEFUNCTION, OnDownLoadFile);
     /* we pass our 'chunk' struct to the callback function */
     curl_easy_setopt(curl_handle, CURLOPT_WRITEDATA, (void *)fp);
+
+    curl_easy_setopt(curl_handle, CURLOPT_NOPROGRESS, 0L);  
     curl_easy_setopt(curl_handle, CURLOPT_PROGRESSFUNCTION, my_progress_func);  
     curl_easy_setopt(curl_handle, CURLOPT_PROGRESSDATA, progress_data);
 
@@ -236,11 +238,7 @@ CURLcode curl_base::Download(std::string strUrl,std::string filepath)
 
 void curl_base::DownloadFinish()
 {
-    /* cleanup curl stuff */
     curl_easy_cleanup(curl_handle);
-    // free(chunk.memory);
-    /* we're done with libcurl, so clean it up */
-    // curl_global_cleanup();
 }
 
 }

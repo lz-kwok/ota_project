@@ -55,19 +55,8 @@ CURLcode my_curl::curl_post_req(const std::string &url, const std::string &postP
     cout << "hello world" << endl; 
 }
 
-CURLcode my_curl::curl_download_init()
-{
-    cout << "hello world" << endl; 
 
-}
-
-void my_curl::SetDwonloadCallback(Callback cb)
-{
-    cout << "hello world" << endl; 
-
-}
-
-CURLcode my_curl::Download(std::string strUrl)
+CURLcode my_curl::Download(std::string strUrl,std::string filepath)
 {
     cout << "hello world" << endl; 
 
