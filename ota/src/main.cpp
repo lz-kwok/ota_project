@@ -5,6 +5,10 @@
 #include <stdio.h>
 #include <sys/io.h>
 #include <sys/stat.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+
 #include <vector>
 #include <signal.h>
 #include <list>
@@ -26,20 +30,18 @@ using namespace mycurl;
 using namespace CURL_BASE;
 using namespace rapidjson;
 
+typedef struct {
+	char mac[64];	
+	char current_ver[32];
+}OTAManager;
+static OTAManager mOtamanager;
+
 #define downLoad_url 	"http://47.111.88.91:6096/downloadExample/update.tar.gz"
 #define downLoad_file 	"/home/myDevelop/ota_project/ota/bin/update.tar.gz"
+#define ota_conf_path   "  "
 
 string posturl = "http://47.111.88.91:6096/iot/data/receive";
 
-void CB(const MemoryStruct &m)
-{
-    static int cnt = 0;
-    printf("CB: cnt:%d, %lu bytes retrieved\n", cnt++, (long)m.size);
-	FILE* fp = NULL;  
-    fopen("/home/myDevelop/ota_project/ota/bin/update.tar.gz", "wb+");  
-    size_t nWrite = fwrite(m.memory, 1, m.size, fp);  
-    fclose(fp);
-}
 
 int GetMacAddress(char* mac, int len)
 {
@@ -79,13 +81,42 @@ int GetMacAddress(char* mac, int len)
 	return 0;
 }
 
+int GetCurrenVersion(char* ver, int len)
+{
+	int ret = -1;
+	char ver_t[32] = {0};
+	memset(ver_t,0x0,32);
+	
+	int fd = open(ota_conf_path, O_RDONLY);
+	if (-1 == fd)
+	{
+		perror("open");
+		return -1;
+	}
+	ret = read(fd, ver_t, 16);
+	if (-1 == ret)
+	{
+		perror("read");
+		close(fd);
+		return -1;
+	}
+	
+	ver_t[ret] = '\0';
+	strncpy(ver, ver_t, ret+1);
+	printf("%s %s\r\n",__func__,ver);
 
-void *myHttp_run(void *para){
+	close(fd);
+	return 0;
+}
+
+
+void *myOTA_run(void *para){
 	mycurl::my_curl::curl_base curl;
-	mycurl::my_curl curl_origin;
-	char mac[64];	
-	memset(mac, 0x0, 64);
-	GetMacAddress(mac, 64);
+	// mycurl::my_curl curl_origin;
+	
+	memset(&mOtamanager, 0x0, sizeof(mOtamanager));
+	GetMacAddress(mOtamanager.mac, 64);
+	GetCurrenVersion(mOtamanager.current_ver,32);
 
 	curl.Download(downLoad_url,downLoad_file);
 	curl.DownloadFinish();
@@ -139,7 +170,6 @@ void *myHttp_run(void *para){
 		sleep(2);
 		printf("%s\r\n",__func__);
 	}
-	// curl.DownloadFinish();
 }
 
 
@@ -149,7 +179,7 @@ int main(int argc, char** argv) {
     curl_global_init(CURL_GLOBAL_ALL);
 
 	pthread_t id;
-    pthread_create(&id, NULL, myHttp_run, NULL);
+    pthread_create(&id, NULL, myOTA_run, NULL);
 
     while (1) {
 		sleep(10);
