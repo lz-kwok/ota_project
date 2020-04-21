@@ -6,8 +6,8 @@
 #include <time.h>
 #include <vector>
 #include <signal.h>
-// #include <curl/curl.h>
-#include <curl64/curl.h>
+#include <curl/curl.h>
+// #include <curl64/curl.h>
 #include <list>
 #include "curl_base.hpp"
 

@@ -8,11 +8,13 @@
 #include <vector>
 #include <signal.h>
 #include <list>
-// #include <curl/curl.h>
-#include <curl64/curl.h>
+#include <curl/curl.h>
+// #include <curl64/curl.h>
 
 #include "curl_base.hpp"
 #include "myHttp_curl.hpp"
+
+#include "md5.h"
 
 #include <rapidjson/document.h>
 #include <rapidjson/stringbuffer.h>
