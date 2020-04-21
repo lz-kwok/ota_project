@@ -243,3 +243,25 @@ int Compute_file_md5(const char *file_path, char *md5_str)
 
 	return 0;
 }
+
+int Compute_string_md5(unsigned char *dest_str, unsigned int dest_len, char *md5_str)
+{
+	int i;
+	unsigned char md5_value[MD5_SIZE];
+	MD5_CTX md5;
+
+	// init md5
+	MD5Init(&md5);
+
+	MD5Update(&md5, dest_str, dest_len);
+
+	MD5Final(&md5, md5_value);
+
+	// convert md5 value to md5 string
+	for(i = 0; i < MD5_SIZE; i++)
+	{
+		snprintf(md5_str + i*2, 2+1, "%02x", md5_value[i]);
+	}
+
+	return 0;
+}

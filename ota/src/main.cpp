@@ -8,6 +8,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
+#include <time.h>
 
 #include <vector>
 #include <signal.h>
@@ -30,6 +31,11 @@ using namespace mycurl;
 using namespace CURL_BASE;
 using namespace rapidjson;
 
+struct hal_timeval{
+  long    tv_sec;         /* seconds */
+  long    tv_usec;        /* and microseconds */
+};
+
 typedef struct {
 	char mac[64];	
 	char current_ver[32];
@@ -39,9 +45,12 @@ static OTAManager mOtamanager;
 #define downLoad_url 	"http://47.111.88.91:6096/downloadExample/update.tar.gz"
 #define downLoad_file 	"/home/myDevelop/ota_project/ota/bin/update.tar.gz"
 #define ota_conf_path   "  "
+#define SALT_KEY 		"f3c05205bb284a8b464c662b08f5d864"
 
 string posturl = "http://47.111.88.91:6096/iot/data/receive";
 
+static uint32_t mLastTimems = 0;
+static struct hal_timeval mTimeVal;
 
 int GetMacAddress(char* mac, int len)
 {
@@ -109,6 +118,39 @@ int GetCurrenVersion(char* ver, int len)
 	return 0;
 }
 
+void GetTimeOfDay(struct hal_timeval* tv)
+{
+    uint32_t timems = 0; //it will roll over every 49 days, 17 hours.
+    uint32_t timediff = 0;
+
+	struct timespec ts;
+	clock_gettime(CLOCK_MONOTONIC,&ts);
+	timems = ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
+    if (timems < mLastTimems) {
+        uint32_t maxTime = -1;
+
+        timediff = maxTime - mLastTimems;
+        timediff += timems;
+    } else {
+        timediff = timems - mLastTimems;
+    }
+
+    mLastTimems = timems;
+	if (mTimeVal.tv_usec == 0 && mTimeVal.tv_sec == 0) {
+		mTimeVal.tv_sec = timediff / 1000;
+		mTimeVal.tv_usec = (timediff % 1000) * 1000;
+	}else {
+		mTimeVal.tv_usec += timediff * 1000;//ms = us * 1000
+		if (mTimeVal.tv_usec >= 1000000) { // 1 second
+			mTimeVal.tv_sec += mTimeVal.tv_usec / 1000000;
+			mTimeVal.tv_usec = mTimeVal.tv_usec % 1000000;
+		}
+	}
+
+    tv->tv_sec = mTimeVal.tv_sec;
+    tv->tv_usec = mTimeVal.tv_usec;
+}
+
 
 void *myOTA_run(void *para){
 	mycurl::my_curl::curl_base curl;
@@ -121,13 +163,25 @@ void *myOTA_run(void *para){
 	curl.Download(downLoad_url,downLoad_file);
 	curl.DownloadFinish();
 	while(1){		
-			
+		StringBuffer VER_STR;
+		Writer<StringBuffer> writer(VER_STR);
+		writer.StartObject();
+		writer.Key("version");
+		writer.String(mOtamanager.current_ver);
+		writer.EndObject();
+		string jsonContext = VER_STR.GetString();
+		printf("%s\r\n",jsonContext);
 
-		// StringBuffer TEXT;
-		// Writer<StringBuffer> writer(TEXT);
-		// writer.StartObject();
-		// writer.Key("appkey");
-		// writer.String("tian jin B1 line");
+		char request_url[256];
+		unsigned char sign[128];
+		char md5_str[MD5_STR_LEN + 1];
+		memset(sign,0x0,128);
+		memset(md5_str,0x0,MD5_STR_LEN + 1);
+		struct hal_timeval now; 
+		GetTimeOfDay(&now);
+		sprintf((char *)sign,"mac%stime%u%s", mOtamanager.mac,(uint32_t)now.tv_sec, SALT_KEY);
+		Compute_string_md5(sign, strlen((const char*)sign), md5_str);
+
 		// writer.Key("devicename");
 		// writer.String("BMS");
 		// writer.Key("devicekey");
