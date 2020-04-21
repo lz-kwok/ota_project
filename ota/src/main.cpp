@@ -46,6 +46,7 @@ static OTAManager mOtamanager;
 #define downLoad_file 	"/home/myDevelop/ota_project/ota/bin/update.tar.gz"
 #define ota_conf_path   "  "
 #define SALT_KEY 		"f3c05205bb284a8b464c662b08f5d864"
+#define URL_POST		"https:/"
 
 string posturl = "http://47.111.88.91:6096/iot/data/receive";
 
@@ -181,7 +182,8 @@ void *myOTA_run(void *para){
 		GetTimeOfDay(&now);
 		sprintf((char *)sign,"mac%stime%u%s", mOtamanager.mac,(uint32_t)now.tv_sec, SALT_KEY);
 		Compute_string_md5(sign, strlen((const char*)sign), md5_str);
-
+		sprintf(request_url,"%s?mac=%s&time=%u&sign=%s",URL_POST,mOtamanager.mac,(uint32_t)now.tv_sec,sign);
+		//(request_url, 256, "%s?appkey=%s&device_id=%s&time=%u&sign=%s", url, APP_KEY,  mManager.device_id, (ev_uint32_t)now.tv_sec, sign);
 		// writer.Key("devicename");
 		// writer.String("BMS");
 		// writer.Key("devicekey");
