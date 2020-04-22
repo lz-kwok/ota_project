@@ -13,8 +13,8 @@
 #include <vector>
 #include <signal.h>
 #include <list>
-#include <curl/curl.h>
-// #include <curl64/curl.h>
+// #include <curl/curl.h>
+#include <curl64/curl.h>
 
 #include "curl_base.hpp"
 #include "myHttp_curl.hpp"
@@ -44,7 +44,7 @@ static OTAManager mOtamanager;
 
 #define downLoad_url 	"http://47.111.88.91:6096/downloadExample/update.tar.gz"
 #define downLoad_file 	"/home/myDevelop/ota_project/ota/bin/update.tar.gz"
-#define ota_conf_path   "  "
+#define ota_conf_path   "/home/myDevelop/ota_project/ota/bin/ota.conf"
 #define SALT_KEY 		"f3c05205bb284a8b464c662b08f5d864"
 #define URL_POST		"https:/"
 
@@ -112,7 +112,7 @@ int GetCurrenVersion(char* ver, int len)
 	}
 	
 	ver_t[ret] = '\0';
-	strncpy(ver, ver_t, ret+1);
+	strncpy(ver, ver_t, ret-1);
 	printf("%s %s\r\n",__func__,ver);
 
 	close(fd);
@@ -161,8 +161,8 @@ void *myOTA_run(void *para){
 	GetMacAddress(mOtamanager.mac, 64);
 	GetCurrenVersion(mOtamanager.current_ver,32);
 
-	curl.Download(downLoad_url,downLoad_file);
-	curl.DownloadFinish();
+	// curl.Download(downLoad_url,downLoad_file);
+	// curl.DownloadFinish();
 	while(1){		
 		StringBuffer VER_STR;
 		Writer<StringBuffer> writer(VER_STR);
@@ -171,7 +171,7 @@ void *myOTA_run(void *para){
 		writer.String(mOtamanager.current_ver);
 		writer.EndObject();
 		string jsonContext = VER_STR.GetString();
-		printf("%s\r\n",jsonContext);
+		printf("%s\r\n",jsonContext.c_str());
 
 		char request_url[256];
 		unsigned char sign[128];
@@ -182,7 +182,8 @@ void *myOTA_run(void *para){
 		GetTimeOfDay(&now);
 		sprintf((char *)sign,"mac%stime%u%s", mOtamanager.mac,(uint32_t)now.tv_sec, SALT_KEY);
 		Compute_string_md5(sign, strlen((const char*)sign), md5_str);
-		sprintf(request_url,"%s?mac=%s&time=%u&sign=%s",URL_POST,mOtamanager.mac,(uint32_t)now.tv_sec,sign);
+		sprintf(request_url,"%s?mac=%s&time=%u&sign=%s",URL_POST,mOtamanager.mac,(uint32_t)now.tv_sec,md5_str);
+		printf("request_url:[%s]\r\n",request_url);
 		//(request_url, 256, "%s?appkey=%s&device_id=%s&time=%u&sign=%s", url, APP_KEY,  mManager.device_id, (ev_uint32_t)now.tv_sec, sign);
 		// writer.Key("devicename");
 		// writer.String("BMS");
