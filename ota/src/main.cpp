@@ -31,6 +31,13 @@ using namespace mycurl;
 using namespace CURL_BASE;
 using namespace rapidjson;
 
+typedef enum{
+	ota_init = 0,
+	ota_request,
+	ota_download,
+	ota_finished
+};
+
 struct hal_timeval{
   long    tv_sec;         /* seconds */
   long    tv_usec;        /* and microseconds */
@@ -39,8 +46,11 @@ struct hal_timeval{
 typedef struct {
 	char mac[64];	
 	char current_ver[32];
+	uint8_t otaStatus;
 }OTAManager;
 static OTAManager mOtamanager;
+
+
 
 #define downLoad_url 	"http://47.111.88.91:6096/downloadExample/update.tar.gz"
 #define downLoad_file 	"/home/myDevelop/ota_project/ota/bin/update.tar.gz"
@@ -48,7 +58,8 @@ static OTAManager mOtamanager;
 #define SALT_KEY 		"f3c05205bb284a8b464c662b08f5d864"
 #define URL_POST		"https:/"
 
-string posturl = "http://47.111.88.91:6096/iot/data/receive";
+// string posturl = "http://47.111.88.91:6096/iot/data/receive";
+string posturl = "30000iot.cn:9001/api/Upload/data/";
 
 static uint32_t mLastTimems = 0;
 static struct hal_timeval mTimeVal;
@@ -155,7 +166,7 @@ void GetTimeOfDay(struct hal_timeval* tv)
 
 void *myOTA_run(void *para){
 	mycurl::my_curl::curl_base curl;
-	// mycurl::my_curl curl_origin;
+	my_curl::curl_base       curl_origin;
 	
 	memset(&mOtamanager, 0x0, sizeof(mOtamanager));
 	GetMacAddress(mOtamanager.mac, 64);
@@ -163,27 +174,38 @@ void *myOTA_run(void *para){
 
 	// curl.Download(downLoad_url,downLoad_file);
 	// curl.DownloadFinish();
+	mOtamanager.otaStatus = ota_init;
 	while(1){		
-		StringBuffer VER_STR;
-		Writer<StringBuffer> writer(VER_STR);
-		writer.StartObject();
-		writer.Key("version");
-		writer.String(mOtamanager.current_ver);
-		writer.EndObject();
-		string jsonContext = VER_STR.GetString();
-		printf("%s\r\n",jsonContext.c_str());
+		if(mOtamanager.otaStatus == ota_init){		//
+			StringBuffer VER_STR;
+			Writer<StringBuffer> writer(VER_STR);
+			writer.StartObject();
+			writer.Key("version");
+			writer.String(mOtamanager.current_ver);
+			writer.EndObject();
+			string jsonContext = VER_STR.GetString();
+			printf("%s\r\n",jsonContext.c_str());
 
-		char request_url[256];
-		unsigned char sign[128];
-		char md5_str[MD5_STR_LEN + 1];
-		memset(sign,0x0,128);
-		memset(md5_str,0x0,MD5_STR_LEN + 1);
-		struct hal_timeval now; 
-		GetTimeOfDay(&now);
-		sprintf((char *)sign,"mac%stime%u%s", mOtamanager.mac,(uint32_t)now.tv_sec, SALT_KEY);
-		Compute_string_md5(sign, strlen((const char*)sign), md5_str);
-		sprintf(request_url,"%s?mac=%s&time=%u&sign=%s",URL_POST,mOtamanager.mac,(uint32_t)now.tv_sec,md5_str);
-		printf("request_url:[%s]\r\n",request_url);
+			char request_url[256];
+			unsigned char sign[128];
+			char md5_str[MD5_STR_LEN + 1];
+			memset(sign,0x0,128);
+			memset(md5_str,0x0,MD5_STR_LEN + 1);
+			struct hal_timeval now; 
+			GetTimeOfDay(&now);
+			sprintf((char *)sign,"mac%stime%u%s", mOtamanager.mac,(uint32_t)now.tv_sec, SALT_KEY);
+			Compute_string_md5(sign, strlen((const char*)sign), md5_str);
+			sprintf(request_url,"%s?mac=%s&time=%u&sign=%s",URL_POST,mOtamanager.mac,(uint32_t)now.tv_sec,md5_str);
+			printf("request_url:[%s]\r\n",request_url);	
+		
+			string Response;
+			std::list<std::string> slist{("Content-Type:application/json;charset=UTF-8")};
+			CURLcode code = curl.curl_post_req(posturl,jsonContext, Response, slist, true, 10, 10);
+			printf("code:%d\r\n",code);
+			printf("%s\r\n",Response.c_str());
+			sleep(5);
+		}
+		
 		//(request_url, 256, "%s?appkey=%s&device_id=%s&time=%u&sign=%s", url, APP_KEY,  mManager.device_id, (ev_uint32_t)now.tv_sec, sign);
 		// writer.Key("devicename");
 		// writer.String("BMS");

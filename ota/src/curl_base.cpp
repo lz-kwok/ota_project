@@ -35,7 +35,7 @@ size_t req_reply(void *ptr, size_t size, size_t nmemb, FILE *stream)
         buffer->append((const char *)ptr, realsize);
     }
 
-    size_t nWrite = fwrite(ptr, 1, nmemb, stream);  
+    // size_t nWrite = fwrite(ptr, 1, nmemb, stream);  
     return realsize;
     /*
     std::string *str = (std::string*)stream;
@@ -134,7 +134,6 @@ CURLcode curl_base::curl_post_req(const std::string &url, const std::string &pos
         curl_easy_setopt(curl, CURLOPT_POST, 1); 			// post req  
         curl_easy_setopt(curl, CURLOPT_URL, url.c_str()); 	// url  
         //curl_easy_setopt(m_curl, CURLOPT_PORT, 8089);    	//port
-        curl_easy_setopt(curl, CURLOPT_POST, 1); 			// post reqest 
         //构建HTTP报文头
         struct curl_slist* headers = NULL;
         if (listRequestHeader.size() > 0)
@@ -146,8 +145,6 @@ CURLcode curl_base::curl_post_req(const std::string &url, const std::string &pos
             {
                 headers = curl_slist_append(headers, iter->c_str());
             }
-            //headers = curl_slist_append(headers, "Content-Type:application/json;charset=UTF-8");
-            //headers = curl_slist_append(headers, "Content-Type:application/x-www-form-urlencoded");
             if (headers != NULL)
             {
                 curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);//设置http请求头信息
@@ -155,7 +152,8 @@ CURLcode curl_base::curl_post_req(const std::string &url, const std::string &pos
         }
         else
         {
-            headers = curl_slist_append(headers, "Content-Type:application/x-www-form-urlencoded");
+            //Content-Type:application/x-www-form-urlencoded
+            headers = curl_slist_append(headers, "Content-Type:application/json;charset=UTF-8");
             if (headers != NULL)
             {
                 curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);	//设置http请求头信息
