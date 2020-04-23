@@ -172,8 +172,8 @@ void *myOTA_run(void *para){
 	GetMacAddress(mOtamanager.mac, 64);
 	GetCurrenVersion(mOtamanager.current_ver,32);
 
-	// curl.Download(downLoad_url,downLoad_file);
-	// curl.DownloadFinish();
+	curl.Download(downLoad_url,downLoad_file);
+	curl.DownloadFinish();
 	mOtamanager.otaStatus = ota_init;
 	while(1){		
 		if(mOtamanager.otaStatus == ota_init){		//

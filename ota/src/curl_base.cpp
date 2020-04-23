@@ -3,6 +3,7 @@
 #include <string.h>
 #include <stdio.h>
 #include <sys/time.h>
+#include <sys/stat.h>
 #include <time.h>
 #include <vector>
 #include <signal.h>
@@ -35,13 +36,7 @@ size_t req_reply(void *ptr, size_t size, size_t nmemb, FILE *stream)
         buffer->append((const char *)ptr, realsize);
     }
 
-    // size_t nWrite = fwrite(ptr, 1, nmemb, stream);  
     return realsize;
-    /*
-    std::string *str = (std::string*)stream;
-    (*str).append((char*)ptr, size*nmemb);
-    return size * nmemb;
-    */
 }
 
 
@@ -59,8 +54,23 @@ static int my_progress_func(char *progress_data,
                      double ultotal,
                      double ulnow)
 {
-  printf("%s %g / %g (%g %%)\n", progress_data, d, t, d*100.0/t);
-  return 0;
+    static double download_d = 0.0;
+    if(download_d != d){
+        download_d = d;
+        printf("%s %g / %g (%g %%)\n", progress_data, d, t, d*100.0/t);
+    }
+    return 0;
+}
+
+static size_t getcontentlengthfunc(void *ptr, size_t size, size_t nmemb, void *stream) {
+       int r;
+       long len = 0;
+ 
+        r = sscanf((const char*)ptr, "Content-Length: %ld\n", &len);
+        if (r) /* Microsoft: we don't read the specs */
+            *((long *) stream) = len;
+ 
+       return size * nmemb;
 }
 
 CURLcode curl_base::curl_get_req(const std::string &url, std::string &response,std::list<std::string> listRequestHeader,
@@ -196,8 +206,23 @@ void curl_base::private_post_print(void){
 CURLcode curl_base::Download(std::string strUrl,std::string filepath)
 {
     CURLcode res;
+    curl_off_t local_file_len = -1 ;
+    long filesize =0 ;
+    
+    CURLcode r = CURLE_GOT_NOTHING;
+    int c;
+    struct stat file_info;
+    int use_resume = 0;
     char *progress_data = "* ";  
-    FILE* fp = fopen(filepath.c_str(),"wb+");
+
+    if(stat(filepath.c_str(), &file_info) == 0) 
+    {
+        local_file_len =  file_info.st_size;
+        use_resume  = 1;
+    }
+
+
+    FILE* fp = fopen(filepath.c_str(),"ab+");
 
     curl_handle = curl_easy_init();
 
@@ -206,21 +231,28 @@ CURLcode curl_base::Download(std::string strUrl,std::string filepath)
     /* we pass our 'chunk' struct to the callback function */
     curl_easy_setopt(curl_handle, CURLOPT_WRITEDATA, (void *)fp);
 
+    //设置http 头部处理函数
+    curl_easy_setopt(curl_handle, CURLOPT_HEADERFUNCTION, getcontentlengthfunc);
+    curl_easy_setopt(curl_handle, CURLOPT_HEADERDATA, &filesize);
+    // 设置文件续传的位置给libcurl
+    curl_easy_setopt(curl_handle, CURLOPT_RESUME_FROM_LARGE, use_resume?local_file_len:0);
+
     curl_easy_setopt(curl_handle, CURLOPT_NOPROGRESS, 0L);  
     curl_easy_setopt(curl_handle, CURLOPT_PROGRESSFUNCTION, my_progress_func);  
     curl_easy_setopt(curl_handle, CURLOPT_PROGRESSDATA, progress_data);
 
-    curl_easy_setopt(curl_handle, CURLOPT_FOLLOWLOCATION, 1);
+    curl_easy_setopt(curl_handle, CURLOPT_FOLLOWLOCATION, 1L);
     curl_easy_setopt(curl_handle, CURLOPT_SSL_VERIFYPEER, 0L);
     curl_easy_setopt(curl_handle, CURLOPT_SSL_VERIFYHOST, 0L);
 
-    curl_easy_setopt(curl_handle,CURLOPT_RESUME_FROM,0);  //从0字节开始下载
+    curl_easy_setopt(curl_handle,CURLOPT_RESUME_FROM,0L);  //从0字节开始下载
     /* 设置连接超时,单位:毫秒 */
     curl_easy_setopt(curl_handle, CURLOPT_CONNECTTIMEOUT_MS, 10000L);
     curl_easy_setopt(curl_handle, CURLOPT_TIMEOUT_MS, 10000L);
     curl_easy_setopt(curl_handle, CURLOPT_NOSIGNAL, 3);
     curl_easy_setopt(curl_handle, CURLOPT_URL, const_cast<char*>(strUrl.c_str()));
 
+    curl_easy_setopt(curl_handle, CURLOPT_VERBOSE, 1L);
 
     /* get it! */
     res = curl_easy_perform(curl_handle);
