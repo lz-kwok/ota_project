@@ -53,13 +53,15 @@ static OTAManager mOtamanager;
 
 
 #define downLoad_url 	"http://47.111.88.91:6096/downloadExample/update.tar.gz"
-#define downLoad_file 	"/home/myDevelop/ota_project/ota/bin/update.tar.gz"
+#define downLoad_file 	"/home/myDevelop/ota_project/ota/bin/glz.tar.gz"
 #define ota_conf_path   "/home/myDevelop/ota_project/ota/bin/ota.conf"
 #define SALT_KEY 		"f3c05205bb284a8b464c662b08f5d864"
 #define URL_POST		"https:/"
 
+
 // string posturl = "http://47.111.88.91:6096/iot/data/receive";
 string posturl = "30000iot.cn:9001/api/Upload/data/";
+string uploadurl = "https://test-dttqa.ferrero.com.cn/gateway/api/saas-master-data/alert_log/uploadLogFile";
 
 static uint32_t mLastTimems = 0;
 static struct hal_timeval mTimeVal;
@@ -172,37 +174,42 @@ void *myOTA_run(void *para){
 	GetMacAddress(mOtamanager.mac, 64);
 	GetCurrenVersion(mOtamanager.current_ver,32);
 
-	curl.Download(downLoad_url,downLoad_file);
-	curl.DownloadFinish();
+	// curl.Download(downLoad_url,downLoad_file);
+	// curl.DownloadFinish();
 	mOtamanager.otaStatus = ota_init;
 	while(1){		
 		if(mOtamanager.otaStatus == ota_init){		//
-			StringBuffer VER_STR;
-			Writer<StringBuffer> writer(VER_STR);
-			writer.StartObject();
-			writer.Key("version");
-			writer.String(mOtamanager.current_ver);
-			writer.EndObject();
-			string jsonContext = VER_STR.GetString();
-			printf("%s\r\n",jsonContext.c_str());
+			mOtamanager.otaStatus = ota_request;
 
-			char request_url[256];
-			unsigned char sign[128];
-			char md5_str[MD5_STR_LEN + 1];
-			memset(sign,0x0,128);
-			memset(md5_str,0x0,MD5_STR_LEN + 1);
-			struct hal_timeval now; 
-			GetTimeOfDay(&now);
-			sprintf((char *)sign,"mac%stime%u%s", mOtamanager.mac,(uint32_t)now.tv_sec, SALT_KEY);
-			Compute_string_md5(sign, strlen((const char*)sign), md5_str);
-			sprintf(request_url,"%s?mac=%s&time=%u&sign=%s",URL_POST,mOtamanager.mac,(uint32_t)now.tv_sec,md5_str);
-			printf("request_url:[%s]\r\n",request_url);	
+			// StringBuffer VER_STR;
+			// Writer<StringBuffer> writer(VER_STR);
+			// writer.StartObject();
+			// writer.Key("version");
+			// writer.String(mOtamanager.current_ver);
+			// writer.EndObject();
+			// string jsonContext = VER_STR.GetString();
+			// printf("%s\r\n",jsonContext.c_str());
+
+			// char request_url[256];
+			// unsigned char sign[128];
+			// char md5_str[MD5_STR_LEN + 1];
+			// memset(sign,0x0,128);
+			// memset(md5_str,0x0,MD5_STR_LEN + 1);
+			// struct hal_timeval now; 
+			// GetTimeOfDay(&now);
+			// sprintf((char *)sign,"mac%stime%u%s", mOtamanager.mac,(uint32_t)now.tv_sec, SALT_KEY);
+			// Compute_string_md5(sign, strlen((const char*)sign), md5_str);
+			// sprintf(request_url,"%s?mac=%s&time=%u&sign=%s",URL_POST,mOtamanager.mac,(uint32_t)now.tv_sec,md5_str);
+			// printf("request_url:[%s]\r\n",request_url);	
 		
-			string Response;
-			std::list<std::string> slist{("Content-Type:application/json;charset=UTF-8")};
-			CURLcode code = curl.curl_post_req(posturl,jsonContext, Response, slist, true, 10, 10);
-			printf("code:%d\r\n",code);
-			printf("%s\r\n",Response.c_str());
+			// string Response;
+			// std::list<std::string> slist{("Content-Type:application/json;charset=UTF-8")};
+			// CURLcode code = curl.curl_post_req(posturl,jsonContext, Response, slist, true, 10, 10);
+			// printf("code:%d\r\n",code);
+			// printf("%s\r\n",Response.c_str());
+
+			curl.Upload(uploadurl,ota_conf_path);
+
 			sleep(5);
 		}
 		

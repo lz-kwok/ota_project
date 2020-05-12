@@ -26,6 +26,8 @@ public:
 
 	virtual void DownloadFinish();
 
+	virtual CURLcode Upload(std::string strUrl,std::string filepath);
+
 	curl_base();
 
 private:
