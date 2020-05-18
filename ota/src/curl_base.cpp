@@ -276,6 +276,8 @@ CURLcode curl_base::Upload(std::string strUrl,std::string filepath)
 {
     CURL* curl = NULL;
     CURLcode res;
+    string response;
+    long httpcode;
  
     CURLM *multi_handle;  
     int still_running;  
@@ -320,6 +322,10 @@ CURLcode curl_base::Upload(std::string strUrl,std::string filepath)
         
         curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headerlist);  
         curl_easy_setopt(curl, CURLOPT_HTTPPOST, formpost);  
+
+        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, req_reply);
+        curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&response);
+        curl_easy_setopt(curl, CURLOPT_HEADER, 1);
         
         curl_multi_add_handle(multi_handle, curl);  
         
@@ -377,6 +383,9 @@ CURLcode curl_base::Upload(std::string strUrl,std::string filepath)
                 break;  
             }  
         } while(still_running);  
+
+        res = curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &httpcode);
+        printf("code [%d] \r\nreponse header \r\n[\r\n\r\n%s]\r\n",httpcode,response.c_str());
         
         curl_multi_cleanup(multi_handle);  
         

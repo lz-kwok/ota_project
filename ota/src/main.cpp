@@ -1,4 +1,5 @@
 #include <iostream>
+#include <fstream>
 #include <unistd.h>
 #include <string.h>
 #include <stdlib.h>
@@ -17,7 +18,7 @@
 #include <curl64/curl.h>
 
 #include "curl_base.hpp"
-#include "myHttp_curl.hpp"
+#include "kc_ferrero.hpp"
 
 #include "md5.h"
 
@@ -27,15 +28,23 @@
 
 
 using namespace std;
-using namespace mycurl;
-using namespace CURL_BASE;
+using namespace kc_ferrero;
 using namespace rapidjson;
+
+kc_ferrero::kc_ferrero::curl_base curl;
+kc_ferrero::kc_ferrero my_ferrero;
 
 typedef enum{
 	ota_init = 0,
 	ota_request,
 	ota_download,
 	ota_finished
+};
+
+enum DEVICE_FERRERO_STATE{
+	DEVICE_LOGIN_PLATFORM,		
+	DEVICE_REQUIRE_ACCESS_RIGHT,
+	DEVICE_PROCESS_READY
 };
 
 struct hal_timeval{
@@ -47,8 +56,15 @@ typedef struct {
 	char mac[64];	
 	char current_ver[32];
 	uint8_t otaStatus;
+	char user_name[32];
 }OTAManager;
 static OTAManager mOtamanager;
+
+typedef struct {
+	uint8_t processStatus;
+	string token;
+}mManager;
+static mManager _mManager;
 
 
 
@@ -58,10 +74,16 @@ static OTAManager mOtamanager;
 #define SALT_KEY 		"f3c05205bb284a8b464c662b08f5d864"
 #define URL_POST		"https:/"
 
+#define CONFIG_PATH     "/home/myDevelop/ota_project/ota/bin/config.json"
+
 
 // string posturl = "http://47.111.88.91:6096/iot/data/receive";
 string posturl = "30000iot.cn:9001/api/Upload/data/";
 string uploadurl = "https://test-dttqa.ferrero.com.cn/gateway/api/saas-master-data/alert_log/uploadLogFile";
+string getlogintoken = "https://test-dttqa.ferrero.com.cn/gateway/api/saas-core-tenant/authentication/device/login";
+string getaccessright = "https://test-dttqa.ferrero.com.cn/gateway/api/saas-core-tenant/authentication/device/user";
+
+
 
 static uint32_t mLastTimems = 0;
 static struct hal_timeval mTimeVal;
@@ -165,18 +187,65 @@ void GetTimeOfDay(struct hal_timeval* tv)
     tv->tv_usec = mTimeVal.tv_usec;
 }
 
+std::string ReadConfigfile()
+{
+	std::ifstream tmp(CONFIG_PATH);
+  	std::string str((std::istreambuf_iterator<char>(tmp)),
+                  std::istreambuf_iterator<char>());
+
+	rapidjson::Document document;
+  	document.Parse(str.c_str());
+
+	if(document.HasMember("nfs_server")){
+		cout << "nfs_server : " << endl;
+		const rapidjson::Value& nfsValue = document["nfs_server"];
+		for(rapidjson::SizeType i = 0; i < nfsValue.Size(); ++i){
+			cout << "    " << nfsValue[i].GetString() << endl;
+		}
+	}
+	
+	return str;
+}
+
+bool UpdateConfigfile(const char *key,const char *val)
+{
+	std::ifstream tmp(CONFIG_PATH);
+  	std::string str((std::istreambuf_iterator<char>(tmp)),
+                  std::istreambuf_iterator<char>());
+
+	rapidjson::Document document;
+  	document.Parse(str.c_str());
+
+	if(document.HasMember(key)){
+		 document.RemoveMember(key);
+	}
+	rapidjson::Value strValue(rapidjson::kStringType);
+	strValue.SetString(val,document.GetAllocator());
+	Value _key(key, document.GetAllocator());
+	document.AddMember(_key,strValue,document.GetAllocator());
+	
+	rapidjson::StringBuffer buffer;
+	rapidjson::Writer< rapidjson::StringBuffer > writer(buffer);
+	document.Accept(writer);
+
+	const char* updatestr = buffer.GetString();
+	FILE * pFile = fopen (CONFIG_PATH , "w");
+	if (!pFile) return false;
+	fwrite(updatestr,sizeof(char),strlen(updatestr),pFile);
+	fclose(pFile);
+
+	return true;
+}
+
 
 void *myOTA_run(void *para){
-	mycurl::my_curl::curl_base curl;
-	my_curl::curl_base       curl_origin;
-	
-	memset(&mOtamanager, 0x0, sizeof(mOtamanager));
-	GetMacAddress(mOtamanager.mac, 64);
-	GetCurrenVersion(mOtamanager.current_ver,32);
+
 
 	// curl.Download(downLoad_url,downLoad_file);
 	// curl.DownloadFinish();
 	mOtamanager.otaStatus = ota_init;
+
+	my_ferrero.get_nowtime();
 	while(1){		
 		if(mOtamanager.otaStatus == ota_init){		//
 			mOtamanager.otaStatus = ota_request;
@@ -208,7 +277,7 @@ void *myOTA_run(void *para){
 			// printf("code:%d\r\n",code);
 			// printf("%s\r\n",Response.c_str());
 
-			curl.Upload(uploadurl,ota_conf_path);
+			// curl.Upload(uploadurl,ota_conf_path);
 
 			sleep(5);
 		}
@@ -259,13 +328,63 @@ void *myOTA_run(void *para){
 }
 
 
+void *uploadLog_run(void *para){
+	string ConfigData = ReadConfigfile();
+	printf("ConfigData = %s\r\n",ConfigData.c_str());
+
+	_mManager.processStatus = DEVICE_LOGIN_PLATFORM;
+
+	while(1){
+		if(_mManager.processStatus == DEVICE_LOGIN_PLATFORM){		//
+			StringBuffer login_str;
+			Writer<StringBuffer> writer(login_str);
+			writer.StartObject();
+			writer.Key("password");
+			writer.String("123456");
+			writer.Key("username");
+			writer.String("pltest01");
+			writer.EndObject();
+			string jsonContext = login_str.GetString();
+			printf("%s\r\n",jsonContext.c_str());
+
+			
+			std::list<std::string> slist{("Content-Type:application/json;charset=UTF-8")};
+			CURLcode code = curl.curl_post_req(getlogintoken,jsonContext, _mManager.token, slist, false, 10, 10);
+			cout << "code:" << code << endl;
+			cout << "_mManager.token:" << _mManager.token << endl;
+
+			UpdateConfigfile("token",_mManager.token.c_str());
+			_mManager.processStatus = DEVICE_REQUIRE_ACCESS_RIGHT;
+		}else if(_mManager.processStatus == DEVICE_REQUIRE_ACCESS_RIGHT){
+			string Response;
+			std::list<std::string> slist{("Content-Type:application/json;charset=UTF-8")};
+			string authorization = "Authorization:" + _mManager.token;
+			slist.push_back(authorization);
+
+			CURLcode code = curl.curl_get_req(getaccessright,Response,slist,true,10,10);
+			cout << "code:" << code << endl;
+			cout << "Response:" << Response << endl;
+
+			_mManager.processStatus = DEVICE_PROCESS_READY;
+		}
+
+		sleep(1);
+	}
+}
+
 
 
 int main(int argc, char** argv) {
+	memset(&mOtamanager, 0x0, sizeof(mOtamanager));
+	GetMacAddress(mOtamanager.mac, 64);
+	GetCurrenVersion(mOtamanager.current_ver,32);
     curl_global_init(CURL_GLOBAL_ALL);
 
-	pthread_t id;
-    pthread_create(&id, NULL, myOTA_run, NULL);
+	pthread_t id_o;
+    pthread_create(&id_o, NULL, myOTA_run, NULL);
+
+	pthread_t id_k;
+    pthread_create(&id_k, NULL, uploadLog_run, NULL);
 
     while (1) {
 		sleep(10);
