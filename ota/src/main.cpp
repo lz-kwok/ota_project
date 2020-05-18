@@ -63,13 +63,19 @@ static OTAManager mOtamanager;
 typedef struct {
 	uint8_t processStatus;
 	string token;
+	string username;
+	string password;
+	int verCode;
+	string verString;
+	string otaurl;
+	string md5val;
 }mManager;
 static mManager _mManager;
 
 
 
 #define downLoad_url 	"http://47.111.88.91:6096/downloadExample/update.tar.gz"
-#define downLoad_file 	"/home/myDevelop/ota_project/ota/bin/glz.tar.gz"
+#define downLoad_file 	"/home/myDevelop/ota_project/ota/bin/glz.exe"
 #define ota_conf_path   "/home/myDevelop/ota_project/ota/bin/ota.conf"
 #define SALT_KEY 		"f3c05205bb284a8b464c662b08f5d864"
 #define URL_POST		"https:/"
@@ -82,7 +88,7 @@ string posturl = "30000iot.cn:9001/api/Upload/data/";
 string uploadurl = "https://test-dttqa.ferrero.com.cn/gateway/api/saas-master-data/alert_log/uploadLogFile";
 string getlogintoken = "https://test-dttqa.ferrero.com.cn/gateway/api/saas-core-tenant/authentication/device/login";
 string getaccessright = "https://test-dttqa.ferrero.com.cn/gateway/api/saas-core-tenant/authentication/device/user";
-
+string getupdate = "https://test-dttqa.ferrero.com.cn/gateway/api/saas-master-data/version_manager/version/INVENTORY_SYSTEM?";
 
 
 static uint32_t mLastTimems = 0;
@@ -202,6 +208,34 @@ std::string ReadConfigfile()
 		for(rapidjson::SizeType i = 0; i < nfsValue.Size(); ++i){
 			cout << "    " << nfsValue[i].GetString() << endl;
 		}
+	}
+
+	if(document.HasMember("username")){
+		const rapidjson::Value &usernameVal = document["username"];
+		_mManager.username = usernameVal.GetString();
+	}
+
+	if(document.HasMember("password")){
+		const rapidjson::Value &psdVal = document["password"];
+		_mManager.password = psdVal.GetString();
+	}
+
+	if(document.HasMember("verCode")){
+		const rapidjson::Value &cdVal = document["verCode"];
+		_mManager.verCode = cdVal.GetInt();
+	}
+
+	if(document.HasMember("verString")){
+		const rapidjson::Value &vsVal = document["verString"];
+		_mManager.verString = vsVal.GetString();
+	}
+
+	if(document.HasMember("token")){
+		const rapidjson::Value &tkVal = document["token"];
+		_mManager.token = tkVal.GetString();
+		_mManager.processStatus = DEVICE_REQUIRE_ACCESS_RIGHT;
+	}else{
+		_mManager.processStatus = DEVICE_LOGIN_PLATFORM;
 	}
 	
 	return str;
@@ -332,40 +366,87 @@ void *uploadLog_run(void *para){
 	string ConfigData = ReadConfigfile();
 	printf("ConfigData = %s\r\n",ConfigData.c_str());
 
-	_mManager.processStatus = DEVICE_LOGIN_PLATFORM;
 
 	while(1){
 		if(_mManager.processStatus == DEVICE_LOGIN_PLATFORM){		//
-			StringBuffer login_str;
-			Writer<StringBuffer> writer(login_str);
-			writer.StartObject();
-			writer.Key("password");
-			writer.String("123456");
-			writer.Key("username");
-			writer.String("pltest01");
-			writer.EndObject();
-			string jsonContext = login_str.GetString();
-			printf("%s\r\n",jsonContext.c_str());
+			if((_mManager.username.length() > 0)&&(_mManager.password.length() > 0)){
+				StringBuffer login_str;
+				Writer<StringBuffer> writer(login_str);
+				writer.StartObject();
+				writer.Key("password");
+				writer.String(_mManager.password.c_str());
+				writer.Key("username");
+				writer.String(_mManager.username.c_str());
+				writer.EndObject();
+				string jsonContext = login_str.GetString();
+				printf("%s\r\n",jsonContext.c_str());
 
-			
-			std::list<std::string> slist{("Content-Type:application/json;charset=UTF-8")};
-			CURLcode code = curl.curl_post_req(getlogintoken,jsonContext, _mManager.token, slist, false, 10, 10);
-			cout << "code:" << code << endl;
-			cout << "_mManager.token:" << _mManager.token << endl;
+				_mManager.token.clear();
+				std::list<std::string> slist{("Content-Type:application/json;charset=UTF-8")};
+				CURLcode code = curl.curl_post_req(getlogintoken,jsonContext, _mManager.token, slist, false, 10, 10);
+				cout << "code:" << code << endl;
+				cout << "_mManager.token:" << _mManager.token << endl;
 
-			UpdateConfigfile("token",_mManager.token.c_str());
-			_mManager.processStatus = DEVICE_REQUIRE_ACCESS_RIGHT;
+				if(_mManager.token.length()){
+					UpdateConfigfile("token",_mManager.token.c_str());
+					_mManager.processStatus = DEVICE_REQUIRE_ACCESS_RIGHT;
+				}else{
+					sleep(5);
+				}
+			}else{
+				printf("Invalid user information \r\n");
+				exit(0);
+			}
 		}else if(_mManager.processStatus == DEVICE_REQUIRE_ACCESS_RIGHT){
 			string Response;
 			std::list<std::string> slist{("Content-Type:application/json;charset=UTF-8")};
 			string authorization = "Authorization:" + _mManager.token;
 			slist.push_back(authorization);
 
-			CURLcode code = curl.curl_get_req(getaccessright,Response,slist,true,10,10);
+			CURLcode code = curl.curl_get_req(getaccessright,Response,slist,false,10,10);
 			cout << "code:" << code << endl;
 			cout << "Response:" << Response << endl;
 
-			_mManager.processStatus = DEVICE_PROCESS_READY;
+			rapidjson::Document resPon;
+			resPon.Parse(Response.c_str());
+			if(resPon.HasMember("roles")){
+				_mManager.processStatus = DEVICE_PROCESS_READY;
+			}else if(resPon.HasMember("code")&&resPon.HasMember("message")){
+				_mManager.processStatus = DEVICE_LOGIN_PLATFORM;
+			}else{
+				sleep(5);
+			}
+		}else if(_mManager.processStatus == DEVICE_PROCESS_READY){
+			string code_str = to_string(_mManager.verCode);
+			string upDate_url = getupdate + "lastVersionCode=" + code_str + "&lastVersionName=" + _mManager.verString;
+			printf("\r\nupDate_url :\r\n%s \r\n",upDate_url.c_str());
+
+			string Response;
+			std::list<std::string> slist{("Content-Type:application/json;charset=UTF-8")};
+			string authorization = "Authorization:" + _mManager.token;
+			slist.push_back(authorization);
+
+			CURLcode code = curl.curl_get_req(upDate_url,Response,slist,false,10,10);
+			cout << "code:" << code << endl;
+			cout << "Response:" << Response << endl;
+
+			rapidjson::Document resPon;
+			resPon.Parse(Response.c_str());
+			if(resPon.HasMember("versionUrl")){
+				const rapidjson::Value &versionUrl = resPon["versionUrl"];
+				_mManager.otaurl = versionUrl.GetString();
+				printf("otaurl = %s\r\n",_mManager.otaurl.c_str());
+
+				sleep(1);
+				curl.Download(_mManager.otaurl,downLoad_file);
+				curl.DownloadFinish();
+				sleep(20);
+			}else if(resPon.HasMember("code")&&resPon.HasMember("message")){
+				_mManager.processStatus = DEVICE_LOGIN_PLATFORM;
+			}else{
+				sleep(5);
+			}
+			// sleep(30);
 		}
 
 		sleep(1);

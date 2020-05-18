@@ -234,7 +234,7 @@ CURLcode curl_base::Download(std::string strUrl,std::string filepath)
     //设置http 头部处理函数
     curl_easy_setopt(curl_handle, CURLOPT_HEADERFUNCTION, getcontentlengthfunc);
     curl_easy_setopt(curl_handle, CURLOPT_HEADERDATA, &filesize);
-    // 设置文件续传的位置给libcurl
+    //设置文件续传的位置给libcurl
     curl_easy_setopt(curl_handle, CURLOPT_RESUME_FROM_LARGE, use_resume?local_file_len:0);
 
     curl_easy_setopt(curl_handle, CURLOPT_NOPROGRESS, 0L);  
@@ -247,8 +247,8 @@ CURLcode curl_base::Download(std::string strUrl,std::string filepath)
 
     curl_easy_setopt(curl_handle,CURLOPT_RESUME_FROM,0L);  //从0字节开始下载
     /* 设置连接超时,单位:毫秒 */
-    curl_easy_setopt(curl_handle, CURLOPT_CONNECTTIMEOUT_MS, 10000L);
-    curl_easy_setopt(curl_handle, CURLOPT_TIMEOUT_MS, 10000L);
+    curl_easy_setopt(curl_handle, CURLOPT_CONNECTTIMEOUT_MS, 100000L);
+    curl_easy_setopt(curl_handle, CURLOPT_TIMEOUT_MS, 100000L);
     curl_easy_setopt(curl_handle, CURLOPT_NOSIGNAL, 3);
     curl_easy_setopt(curl_handle, CURLOPT_URL, const_cast<char*>(strUrl.c_str()));
 
