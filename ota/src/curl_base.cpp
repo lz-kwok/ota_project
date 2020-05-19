@@ -222,7 +222,7 @@ CURLcode curl_base::Download(std::string strUrl,std::string filepath)
     }
 
 
-    FILE* fp = fopen(filepath.c_str(),"ab+");
+    FILE* fp = fopen(filepath.c_str(),"wb+");
 
     curl_handle = curl_easy_init();
 

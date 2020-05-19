@@ -34,17 +34,12 @@ using namespace rapidjson;
 kc_ferrero::kc_ferrero::curl_base curl;
 kc_ferrero::kc_ferrero my_ferrero;
 
-typedef enum{
-	ota_init = 0,
-	ota_request,
-	ota_download,
-	ota_finished
-};
 
 enum DEVICE_FERRERO_STATE{
 	DEVICE_LOGIN_PLATFORM,		
 	DEVICE_REQUIRE_ACCESS_RIGHT,
-	DEVICE_PROCESS_READY
+	DEVICE_PROCESS_READY,
+	DEVICE_OTA_PROCESS
 };
 
 struct hal_timeval{
@@ -52,13 +47,7 @@ struct hal_timeval{
   long    tv_usec;        /* and microseconds */
 };
 
-typedef struct {
-	char mac[64];	
-	char current_ver[32];
-	uint8_t otaStatus;
-	char user_name[32];
-}OTAManager;
-static OTAManager mOtamanager;
+
 
 typedef struct {
 	uint8_t processStatus;
@@ -69,13 +58,14 @@ typedef struct {
 	string verString;
 	string otaurl;
 	string md5val;
+	string todayDate;
 }mManager;
 static mManager _mManager;
 
 
 
 #define downLoad_url 	"http://47.111.88.91:6096/downloadExample/update.tar.gz"
-#define downLoad_file 	"/home/myDevelop/ota_project/ota/bin/glz.exe"
+#define downLoad_file 	"/home/myDevelop/ota_project/ota/bin/update.tar.gz"
 #define ota_conf_path   "/home/myDevelop/ota_project/ota/bin/ota.conf"
 #define SALT_KEY 		"f3c05205bb284a8b464c662b08f5d864"
 #define URL_POST		"https:/"
@@ -88,7 +78,7 @@ string posturl = "30000iot.cn:9001/api/Upload/data/";
 string uploadurl = "https://test-dttqa.ferrero.com.cn/gateway/api/saas-master-data/alert_log/uploadLogFile";
 string getlogintoken = "https://test-dttqa.ferrero.com.cn/gateway/api/saas-core-tenant/authentication/device/login";
 string getaccessright = "https://test-dttqa.ferrero.com.cn/gateway/api/saas-core-tenant/authentication/device/user";
-string getupdate = "https://test-dttqa.ferrero.com.cn/gateway/api/saas-master-data/version_manager/version/INVENTORY_SYSTEM?";
+string getupdate = "https://test-dttqa.ferrero.com.cn/gateway/api/saas-master-data/version_manager/version/CONNEXT_MAGIC_BOX?";
 
 
 static uint32_t mLastTimems = 0;
@@ -274,98 +264,91 @@ bool UpdateConfigfile(const char *key,const char *val)
 
 void *myOTA_run(void *para){
 
-
-	// curl.Download(downLoad_url,downLoad_file);
-	// curl.DownloadFinish();
-	mOtamanager.otaStatus = ota_init;
-
-	my_ferrero.get_nowtime();
+	_mManager.todayDate = my_ferrero.get_nowtime();
 	while(1){		
-		if(mOtamanager.otaStatus == ota_init){		//
-			mOtamanager.otaStatus = ota_request;
+		string nowDate = my_ferrero.get_nowtime();
+		if(nowDate.compare(_mManager.todayDate) == 0){
+			sleep(10);
+			printf("%s thread heat beat\r\n",__func__);
+		}else{
+			_mManager.todayDate = nowDate;
+			if(_mManager.processStatus == DEVICE_PROCESS_READY){
+				string code_str = to_string(_mManager.verCode);
+				string upDate_url = getupdate + "lastVersionCode=" + code_str + "&lastVersionName=" + _mManager.verString;
+				printf("\r\nupDate_url :\r\n%s \r\n",upDate_url.c_str());
 
-			// StringBuffer VER_STR;
-			// Writer<StringBuffer> writer(VER_STR);
-			// writer.StartObject();
-			// writer.Key("version");
-			// writer.String(mOtamanager.current_ver);
-			// writer.EndObject();
-			// string jsonContext = VER_STR.GetString();
-			// printf("%s\r\n",jsonContext.c_str());
+				string Response;
+				std::list<std::string> slist{("Content-Type:application/json;charset=UTF-8")};
+				string authorization = "Authorization:" + _mManager.token;
+				slist.push_back(authorization);
 
-			// char request_url[256];
-			// unsigned char sign[128];
-			// char md5_str[MD5_STR_LEN + 1];
-			// memset(sign,0x0,128);
-			// memset(md5_str,0x0,MD5_STR_LEN + 1);
-			// struct hal_timeval now; 
-			// GetTimeOfDay(&now);
-			// sprintf((char *)sign,"mac%stime%u%s", mOtamanager.mac,(uint32_t)now.tv_sec, SALT_KEY);
-			// Compute_string_md5(sign, strlen((const char*)sign), md5_str);
-			// sprintf(request_url,"%s?mac=%s&time=%u&sign=%s",URL_POST,mOtamanager.mac,(uint32_t)now.tv_sec,md5_str);
-			// printf("request_url:[%s]\r\n",request_url);	
-		
-			// string Response;
-			// std::list<std::string> slist{("Content-Type:application/json;charset=UTF-8")};
-			// CURLcode code = curl.curl_post_req(posturl,jsonContext, Response, slist, true, 10, 10);
-			// printf("code:%d\r\n",code);
-			// printf("%s\r\n",Response.c_str());
+				CURLcode code = curl.curl_get_req(upDate_url,Response,slist,false,10,10);
+				cout << "code:" << code << endl;
+				cout << "Response:" << Response << endl;
 
-			// curl.Upload(uploadurl,ota_conf_path);
+				rapidjson::Document resPon;
+				resPon.Parse(Response.c_str());
 
-			sleep(5);
+				if(resPon.HasMember("versionCode")){
+					const rapidjson::Value &versionCode = resPon["versionCode"];
+					int lasted_Code = versionCode.GetInt();
+					if(lasted_Code > _mManager.verCode){
+						printf("find new version\r\n");
+
+						if(resPon.HasMember("versionUrl")){
+							const rapidjson::Value &versionUrl = resPon["versionUrl"];
+							_mManager.otaurl = versionUrl.GetString();
+							printf("otaurl = %s\r\n",_mManager.otaurl.c_str());
+
+							if(resPon.HasMember("md5Sum")){
+								_mManager.md5val.clear();
+								const rapidjson::Value &MD5 = resPon["md5Sum"];
+								_mManager.md5val = MD5.GetString();
+								printf("md5val = %s\r\n",_mManager.md5val.c_str());
+							}
+
+							sleep(1);
+							curl.Download(_mManager.otaurl,downLoad_file);
+							curl.DownloadFinish();
+							printf("DownLoad over...\r\n");
+
+							if(access(downLoad_file, F_OK ) != -1 ){
+								char *md5_val = (char *)malloc(32*sizeof(char *));
+								Compute_file_md5(downLoad_file,md5_val);
+								string md5_download_file = md5_val;
+								printf("download file md5 val = [%s]\r\n",md5_download_file.c_str());
+								if(md5_download_file.compare(_mManager.md5val) == 0){
+									printf("ota file down load success\r\n");
+									_mManager.processStatus = DEVICE_OTA_PROCESS;
+								}else{
+									printf("ota file down load failed,repeat again \r\n");
+									sleep(5);
+								}
+								free(md5_val);
+							} 
+						}else if(resPon.HasMember("code")&&resPon.HasMember("message")){
+							_mManager.processStatus = DEVICE_LOGIN_PLATFORM;
+						}else{
+							sleep(5);
+						}
+					}else{
+						printf("\r\n********************no version found*********************\r\n");
+					}
+				}
+			}else if(_mManager.processStatus == DEVICE_OTA_PROCESS){
+				//执行ota脚本
+			}
 		}
-		
-		//(request_url, 256, "%s?appkey=%s&device_id=%s&time=%u&sign=%s", url, APP_KEY,  mManager.device_id, (ev_uint32_t)now.tv_sec, sign);
-		// writer.Key("devicename");
-		// writer.String("BMS");
-		// writer.Key("devicekey");
-		// writer.Int(1);
-
-		// writer.Key("header");
-		// writer.StartObject();
-		// writer.Key("namespaceme");
-		// writer.String("0");
-		// writer.Key("version");
-		// writer.String("1.0");
-		// writer.EndObject();
-
-		// writer.Key("payload");
-		// writer.StartObject();
-		// writer.Key("bat_volt");
-		// writer.Int(222);
-		// writer.Key("bat_soc");
-		// writer.Int(333);
-		// writer.Key("bat_min_volt");
-		// writer.Int(444);
-		// writer.Key("bcC_underV");
-		// writer.Double(12.34567);
-		// writer.EndObject();
-
-		// writer.Key("uptime");
-		// writer.String("2019-06-05 17:33:38");
-
-		// writer.EndObject();
-		// string jsonContext = TEXT.GetString();
-		// std::cout << "============jsonContext============" << jsonContext << std::endl;
-
-		// string Response;
-		// std::list<std::string> slist{("Content-Type:application/json;charset=UTF-8")};
-		// CURLcode code = curl.curl_post_req(posturl,jsonContext, Response, slist, true, 10, 10);
-		// cout << "code:" << code << endl;
-		// cout << "Response:" << Response << endl;
-
-
 		sleep(2);
-		printf("%s\r\n",__func__);
+
 	}
 }
 
 
 void *uploadLog_run(void *para){
+	_mManager.processStatus = DEVICE_LOGIN_PLATFORM;
 	string ConfigData = ReadConfigfile();
 	printf("ConfigData = %s\r\n",ConfigData.c_str());
-
 
 	while(1){
 		if(_mManager.processStatus == DEVICE_LOGIN_PLATFORM){		//
@@ -398,25 +381,27 @@ void *uploadLog_run(void *para){
 				exit(0);
 			}
 		}else if(_mManager.processStatus == DEVICE_REQUIRE_ACCESS_RIGHT){
-			string Response;
-			std::list<std::string> slist{("Content-Type:application/json;charset=UTF-8")};
-			string authorization = "Authorization:" + _mManager.token;
-			slist.push_back(authorization);
+			// string Response;
+			// Response.clear();
+			// std::list<std::string> slist{("Content-Type:application/json;charset=UTF-8")};
+			// string authorization = "Authorization:" + _mManager.token;
+			// slist.push_back(authorization);
 
-			CURLcode code = curl.curl_get_req(getaccessright,Response,slist,false,10,10);
-			cout << "code:" << code << endl;
-			cout << "Response:" << Response << endl;
+			// CURLcode code = curl.curl_get_req(getaccessright,Response,slist,false,10,10);
+			// cout << "code:" << code << endl;
+			// cout << "Response:" << Response << endl;
 
-			rapidjson::Document resPon;
-			resPon.Parse(Response.c_str());
-			if(resPon.HasMember("roles")){
-				_mManager.processStatus = DEVICE_PROCESS_READY;
-			}else if(resPon.HasMember("code")&&resPon.HasMember("message")){
-				_mManager.processStatus = DEVICE_LOGIN_PLATFORM;
-			}else{
-				sleep(5);
-			}
-		}else if(_mManager.processStatus == DEVICE_PROCESS_READY){
+			// if(Response.length() > 0){
+			// 	rapidjson::Document resPon;
+			// 	resPon.Parse(Response.c_str());
+			// 	if(resPon.HasMember("roles")){
+			// 		_mManager.processStatus = DEVICE_PROCESS_READY;
+			// 	}else if(resPon.HasMember("code")&&resPon.HasMember("message")){
+			// 		_mManager.processStatus = DEVICE_LOGIN_PLATFORM;
+			// 	}else{
+			// 		sleep(5);
+			// 	}
+			// }
 			string code_str = to_string(_mManager.verCode);
 			string upDate_url = getupdate + "lastVersionCode=" + code_str + "&lastVersionName=" + _mManager.verString;
 			printf("\r\nupDate_url :\r\n%s \r\n",upDate_url.c_str());
@@ -432,21 +417,59 @@ void *uploadLog_run(void *para){
 
 			rapidjson::Document resPon;
 			resPon.Parse(Response.c_str());
-			if(resPon.HasMember("versionUrl")){
-				const rapidjson::Value &versionUrl = resPon["versionUrl"];
-				_mManager.otaurl = versionUrl.GetString();
-				printf("otaurl = %s\r\n",_mManager.otaurl.c_str());
 
-				sleep(1);
-				curl.Download(_mManager.otaurl,downLoad_file);
-				curl.DownloadFinish();
-				sleep(20);
-			}else if(resPon.HasMember("code")&&resPon.HasMember("message")){
-				_mManager.processStatus = DEVICE_LOGIN_PLATFORM;
-			}else{
-				sleep(5);
+			if(resPon.HasMember("versionCode")){
+				const rapidjson::Value &versionCode = resPon["versionCode"];
+				int lasted_Code = versionCode.GetInt();
+				if(lasted_Code > _mManager.verCode){
+					printf("find new version\r\n");
+
+					if(resPon.HasMember("versionUrl")){
+						const rapidjson::Value &versionUrl = resPon["versionUrl"];
+						_mManager.otaurl = versionUrl.GetString();
+						printf("otaurl = %s\r\n",_mManager.otaurl.c_str());
+
+						if(resPon.HasMember("md5Sum")){
+							_mManager.md5val.clear();
+							const rapidjson::Value &MD5 = resPon["md5Sum"];
+							_mManager.md5val = MD5.GetString();
+							printf("md5val = %s\r\n",_mManager.md5val.c_str());
+						}
+
+						sleep(1);
+						curl.Download(_mManager.otaurl,downLoad_file);
+						curl.DownloadFinish();
+						printf("DownLoad over...\r\n");
+
+						if(access(downLoad_file, F_OK ) != -1 ){
+							char *md5_val = (char *)malloc(32*sizeof(char *));
+							Compute_file_md5(downLoad_file,md5_val);
+							string md5_download_file = md5_val;
+							printf("download file md5 val = [%s]\r\n",md5_download_file.c_str());
+							if(md5_download_file.compare(_mManager.md5val) == 0){
+								printf("ota file down load success\r\n");
+								_mManager.processStatus = DEVICE_OTA_PROCESS;
+							}else{
+								printf("ota file down load failed,repeat again \r\n");
+								sleep(5);
+							}
+							free(md5_val);
+						} 
+					}else if(resPon.HasMember("code")&&resPon.HasMember("message")){
+						_mManager.processStatus = DEVICE_LOGIN_PLATFORM;
+					}else{
+						sleep(5);
+					}
+				}else{
+					_mManager.processStatus = DEVICE_PROCESS_READY;
+					printf("\r\n********************no version found*********************\r\n");
+					sleep(2);
+				}
 			}
-			// sleep(30);
+		}else if(_mManager.processStatus == DEVICE_PROCESS_READY){
+			
+		}else if(_mManager.processStatus == DEVICE_OTA_PROCESS){
+			//执行ota脚本
 		}
 
 		sleep(1);
@@ -456,9 +479,6 @@ void *uploadLog_run(void *para){
 
 
 int main(int argc, char** argv) {
-	memset(&mOtamanager, 0x0, sizeof(mOtamanager));
-	GetMacAddress(mOtamanager.mac, 64);
-	GetCurrenVersion(mOtamanager.current_ver,32);
     curl_global_init(CURL_GLOBAL_ALL);
 
 	pthread_t id_o;
