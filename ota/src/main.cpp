@@ -34,6 +34,12 @@ using namespace rapidjson;
 kc_ferrero::kc_ferrero::curl_base curl;
 kc_ferrero::kc_ferrero my_ferrero;
 
+typedef enum {
+	Type_STRING = 0,
+	Type_INT,
+	Type_BOOL
+}Json_Type;
+
 
 enum DEVICE_FERRERO_STATE{
 	DEVICE_LOGIN_PLATFORM,		
@@ -59,6 +65,7 @@ typedef struct {
 	string otaurl;
 	string md5val;
 	string todayDate;
+	int upLoadIndex;
 }mManager;
 static mManager _mManager;
 
@@ -71,6 +78,7 @@ static mManager _mManager;
 #define URL_POST		"https:/"
 
 #define CONFIG_PATH     "/home/myDevelop/ota_project/ota/bin/config.json"
+#define NFS_PATH		"/home/leon/Downloads/develop/split/"
 
 
 // string posturl = "http://47.111.88.91:6096/iot/data/receive";
@@ -220,6 +228,11 @@ std::string ReadConfigfile()
 		_mManager.verString = vsVal.GetString();
 	}
 
+	if(document.HasMember("upLoadIndex")){
+		const rapidjson::Value &uIVal = document["upLoadIndex"];
+		_mManager.upLoadIndex = uIVal.GetInt();
+	}
+
 	if(document.HasMember("token")){
 		const rapidjson::Value &tkVal = document["token"];
 		_mManager.token = tkVal.GetString();
@@ -231,7 +244,7 @@ std::string ReadConfigfile()
 	return str;
 }
 
-bool UpdateConfigfile(const char *key,const char *val)
+bool UpdateConfigfile(const char *key,void *val,Json_Type jsontype)
 {
 	std::ifstream tmp(CONFIG_PATH);
   	std::string str((std::istreambuf_iterator<char>(tmp)),
@@ -243,10 +256,21 @@ bool UpdateConfigfile(const char *key,const char *val)
 	if(document.HasMember(key)){
 		 document.RemoveMember(key);
 	}
-	rapidjson::Value strValue(rapidjson::kStringType);
-	strValue.SetString(val,document.GetAllocator());
-	Value _key(key, document.GetAllocator());
-	document.AddMember(_key,strValue,document.GetAllocator());
+
+	if(jsontype == Type_STRING){
+		rapidjson::Value strValue(rapidjson::kStringType);
+		strValue.SetString((const char *)val,document.GetAllocator());
+		Value _key(key, document.GetAllocator());
+		document.AddMember(_key,strValue,document.GetAllocator());
+		printf("add string done\r\n");
+	}else if(jsontype == Type_INT){
+		int *numVal = (int*)val;
+		rapidjson::Value numValue(rapidjson::kNumberType);
+		numValue.SetInt((*numVal));
+		Value _key(key, document.GetAllocator());
+		document.AddMember(_key,numValue,document.GetAllocator());
+		printf("add number done\r\n");
+	}
 	
 	rapidjson::StringBuffer buffer;
 	rapidjson::Writer< rapidjson::StringBuffer > writer(buffer);
@@ -257,6 +281,7 @@ bool UpdateConfigfile(const char *key,const char *val)
 	if (!pFile) return false;
 	fwrite(updatestr,sizeof(char),strlen(updatestr),pFile);
 	fclose(pFile);
+	system("sync");
 
 	return true;
 }
@@ -334,6 +359,8 @@ void *myOTA_run(void *para){
 					}else{
 						printf("\r\n********************no version found*********************\r\n");
 					}
+				}else if(resPon.HasMember("code")&&resPon.HasMember("message")){	//Response:{"code":"401","message":"Need authorization."}
+					_mManager.processStatus = DEVICE_LOGIN_PLATFORM;
 				}
 			}else if(_mManager.processStatus == DEVICE_OTA_PROCESS){
 				//执行ota脚本
@@ -371,7 +398,7 @@ void *uploadLog_run(void *para){
 				cout << "_mManager.token:" << _mManager.token << endl;
 
 				if(_mManager.token.length()){
-					UpdateConfigfile("token",_mManager.token.c_str());
+					UpdateConfigfile("token",(void *)_mManager.token.c_str(),Type_STRING);
 					_mManager.processStatus = DEVICE_REQUIRE_ACCESS_RIGHT;
 				}else{
 					sleep(5);
@@ -381,27 +408,30 @@ void *uploadLog_run(void *para){
 				exit(0);
 			}
 		}else if(_mManager.processStatus == DEVICE_REQUIRE_ACCESS_RIGHT){
-			// string Response;
-			// Response.clear();
-			// std::list<std::string> slist{("Content-Type:application/json;charset=UTF-8")};
-			// string authorization = "Authorization:" + _mManager.token;
-			// slist.push_back(authorization);
+#if 0	//获取访问权限
+			string Response;
+			Response.clear();
+			std::list<std::string> slist{("Content-Type:application/json;charset=UTF-8")};
+			string authorization = "Authorization:" + _mManager.token;
+			slist.push_back(authorization);
 
-			// CURLcode code = curl.curl_get_req(getaccessright,Response,slist,false,10,10);
-			// cout << "code:" << code << endl;
-			// cout << "Response:" << Response << endl;
+			CURLcode code = curl.curl_get_req(getaccessright,Response,slist,false,10,10);
+			cout << "code:" << code << endl;
+			cout << "Response:" << Response << endl;
 
-			// if(Response.length() > 0){
-			// 	rapidjson::Document resPon;
-			// 	resPon.Parse(Response.c_str());
-			// 	if(resPon.HasMember("roles")){
-			// 		_mManager.processStatus = DEVICE_PROCESS_READY;
-			// 	}else if(resPon.HasMember("code")&&resPon.HasMember("message")){
-			// 		_mManager.processStatus = DEVICE_LOGIN_PLATFORM;
-			// 	}else{
-			// 		sleep(5);
-			// 	}
-			// }
+			if(Response.length() > 0){
+				rapidjson::Document resPon;
+				resPon.Parse(Response.c_str());
+				if(resPon.HasMember("roles")){
+					_mManager.processStatus = DEVICE_PROCESS_READY;
+				}else if(resPon.HasMember("code")&&resPon.HasMember("message")){
+					_mManager.processStatus = DEVICE_LOGIN_PLATFORM;
+				}else{
+					sleep(5);
+				}
+			}
+#endif
+			//开机查询一次最新版本
 			string code_str = to_string(_mManager.verCode);
 			string upDate_url = getupdate + "lastVersionCode=" + code_str + "&lastVersionName=" + _mManager.verString;
 			printf("\r\nupDate_url :\r\n%s \r\n",upDate_url.c_str());
@@ -455,8 +485,6 @@ void *uploadLog_run(void *para){
 							}
 							free(md5_val);
 						} 
-					}else if(resPon.HasMember("code")&&resPon.HasMember("message")){
-						_mManager.processStatus = DEVICE_LOGIN_PLATFORM;
 					}else{
 						sleep(5);
 					}
@@ -465,14 +493,27 @@ void *uploadLog_run(void *para){
 					printf("\r\n********************no version found*********************\r\n");
 					sleep(2);
 				}
+			}else if(resPon.HasMember("code")&&resPon.HasMember("message")){	//Response:{"code":"401","message":"Need authorization."}
+				_mManager.processStatus = DEVICE_LOGIN_PLATFORM;
 			}
 		}else if(_mManager.processStatus == DEVICE_PROCESS_READY){
-			
-		}else if(_mManager.processStatus == DEVICE_OTA_PROCESS){
-			//执行ota脚本
+			string upload_Index = to_string(_mManager.upLoadIndex);
+			string now_d = my_ferrero.get_nowtime();
+			string up_loadFile = NFS_PATH + upload_Index + "log" + now_d + ".tar.gz";
+			if(access(up_loadFile.c_str(), F_OK ) != -1 ){
+				printf("find file \r\n");
+				long http_res = curl.Upload(uploadurl,up_loadFile);
+				if(http_res == 200){
+					_mManager.upLoadIndex ++;
+					UpdateConfigfile("upLoadIndex",(void *)&_mManager.upLoadIndex,Type_INT);
+				}
+			}else{
+				printf("no file \r\n");
+			}
+
 		}
 
-		sleep(1);
+		sleep(10);
 	}
 }
 

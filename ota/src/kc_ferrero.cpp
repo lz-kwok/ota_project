@@ -25,7 +25,7 @@ std::string kc_ferrero::get_nowtime(void)
     time_t t = time(0); 
     string tim;
     char tmp[64]; 
-    strftime( tmp, sizeof(tmp), "%Y%m%d%M",localtime(&t) ); 
+    strftime( tmp, sizeof(tmp), "%Y%m%d",localtime(&t) ); 
     tim = tmp;
     printf("%s\r\n",tim.c_str());
 

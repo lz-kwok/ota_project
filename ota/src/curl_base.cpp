@@ -272,7 +272,7 @@ void curl_base::DownloadFinish()
 }
 
 
-CURLcode curl_base::Upload(std::string strUrl,std::string filepath)
+long curl_base::Upload(std::string strUrl,std::string filepath)
 {
     CURL* curl = NULL;
     CURLcode res;
@@ -399,7 +399,7 @@ CURLcode curl_base::Upload(std::string strUrl,std::string filepath)
         curl_slist_free_all (headerlist);  
     }  
     
-    return res;
+    return httpcode;
 }
 
 }
