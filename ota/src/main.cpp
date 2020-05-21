@@ -31,6 +31,7 @@ using namespace std;
 using namespace kc_ferrero;
 using namespace rapidjson;
 
+
 kc_ferrero::kc_ferrero::curl_base curl;
 kc_ferrero::kc_ferrero my_ferrero;
 
@@ -66,6 +67,8 @@ typedef struct {
 	string md5val;
 	string todayDate;
 	int upLoadIndex;
+	string timestamp;
+	struct hal_timeval upLoadTime;
 }mManager;
 static mManager _mManager;
 
@@ -77,8 +80,9 @@ static mManager _mManager;
 #define SALT_KEY 		"f3c05205bb284a8b464c662b08f5d864"
 #define URL_POST		"https:/"
 
-#define CONFIG_PATH     "/home/myDevelop/ota_project/ota/bin/config.json"
-#define NFS_PATH		"/home/leon/Downloads/develop/split/"
+#define CONFIG_PATH     		"/home/myDevelop/ota_project/ota/bin/config.json"
+#define CONFIG_PATH_BACKUP     	"/home/myDevelop/ota_project/ota/bin/config_backup.json"
+#define NFS_PATH				"/home/leon/Downloads/develop/split/"
 
 
 // string posturl = "http://47.111.88.91:6096/iot/data/receive";
@@ -158,7 +162,7 @@ int GetCurrenVersion(char* ver, int len)
 	return 0;
 }
 
-void GetTimeOfDay(struct hal_timeval* tv)
+void GetTimeOf_Day(struct hal_timeval* tv)
 {
     uint32_t timems = 0; //it will roll over every 49 days, 17 hours.
     uint32_t timediff = 0;
@@ -191,14 +195,18 @@ void GetTimeOfDay(struct hal_timeval* tv)
     tv->tv_usec = mTimeVal.tv_usec;
 }
 
-std::string ReadConfigfile()
+std::string ReadConfigfile(const char *config_path)
 {
-	std::ifstream tmp(CONFIG_PATH);
+	std::ifstream tmp(config_path);
   	std::string str((std::istreambuf_iterator<char>(tmp)),
                   std::istreambuf_iterator<char>());
 
 	rapidjson::Document document;
   	document.Parse(str.c_str());
+	
+	if (document.HasParseError()) {		//判断配置文件json格式是否被破坏
+		return "";
+	}
 
 	if(document.HasMember("nfs_server")){
 		cout << "nfs_server : " << endl;
@@ -239,6 +247,11 @@ std::string ReadConfigfile()
 		_mManager.processStatus = DEVICE_REQUIRE_ACCESS_RIGHT;
 	}else{
 		_mManager.processStatus = DEVICE_LOGIN_PLATFORM;
+	}
+
+	if(document.HasMember("timestamp")){
+		const rapidjson::Value &tsVal = document["timestamp"];
+		_mManager.timestamp = tsVal.GetString();
 	}
 	
 	return str;
@@ -314,6 +327,10 @@ void *myOTA_run(void *para){
 				rapidjson::Document resPon;
 				resPon.Parse(Response.c_str());
 
+				if((code != CURLE_OK)||resPon.HasParseError()){
+					goto err2;
+				}
+
 				if(resPon.HasMember("versionCode")){
 					const rapidjson::Value &versionCode = resPon["versionCode"];
 					int lasted_Code = versionCode.GetInt();
@@ -366,6 +383,7 @@ void *myOTA_run(void *para){
 				//执行ota脚本
 			}
 		}
+err2:
 		sleep(2);
 
 	}
@@ -374,7 +392,16 @@ void *myOTA_run(void *para){
 
 void *uploadLog_run(void *para){
 	_mManager.processStatus = DEVICE_LOGIN_PLATFORM;
-	string ConfigData = ReadConfigfile();
+	string ConfigData = ReadConfigfile(CONFIG_PATH);
+	if(ConfigData.empty()){
+		char cp_cmd[256];
+		memset(cp_cmd,0x0,sizeof(cp_cmd));
+		sprintf(cp_cmd,"cp %s %s",CONFIG_PATH_BACKUP,CONFIG_PATH);
+		system(cp_cmd);
+		system("sync");
+		exit(0);
+	}
+	
 	printf("ConfigData = %s\r\n",ConfigData.c_str());
 
 	while(1){
@@ -448,6 +475,11 @@ void *uploadLog_run(void *para){
 			rapidjson::Document resPon;
 			resPon.Parse(Response.c_str());
 
+			if((code != CURLE_OK)||resPon.HasParseError()){
+				goto err1;
+			}
+
+
 			if(resPon.HasMember("versionCode")){
 				const rapidjson::Value &versionCode = resPon["versionCode"];
 				int lasted_Code = versionCode.GetInt();
@@ -492,28 +524,41 @@ void *uploadLog_run(void *para){
 					_mManager.processStatus = DEVICE_PROCESS_READY;
 					printf("\r\n********************no version found*********************\r\n");
 					sleep(2);
+					GetTimeOf_Day(&_mManager.upLoadTime);
+					
 				}
 			}else if(resPon.HasMember("code")&&resPon.HasMember("message")){	//Response:{"code":"401","message":"Need authorization."}
 				_mManager.processStatus = DEVICE_LOGIN_PLATFORM;
 			}
 		}else if(_mManager.processStatus == DEVICE_PROCESS_READY){
-			string upload_Index = to_string(_mManager.upLoadIndex);
-			string now_d = my_ferrero.get_nowtime();
-			string up_loadFile = NFS_PATH + upload_Index + "log" + now_d + ".tar.gz";
-			if(access(up_loadFile.c_str(), F_OK ) != -1 ){
-				printf("find file \r\n");
-				long http_res = curl.Upload(uploadurl,up_loadFile);
-				if(http_res == 200){
-					_mManager.upLoadIndex ++;
-					UpdateConfigfile("upLoadIndex",(void *)&_mManager.upLoadIndex,Type_INT);
+			struct hal_timeval now;
+			struct hal_timeval tmp_tv;
+			GetTimeOf_Day(&now);
+
+			tmp_tv.tv_sec = now.tv_sec - _mManager.upLoadTime.tv_sec;
+			if(tmp_tv.tv_sec > 10){
+				GetTimeOf_Day(&_mManager.upLoadTime);
+
+				string upload_Index = to_string(_mManager.upLoadIndex);
+				string now_d = my_ferrero.get_nowtime();
+				string up_loadFile = NFS_PATH + upload_Index + "log" + now_d + ".tar.gz";
+				if(access(up_loadFile.c_str(), F_OK ) != -1 ){
+					printf("find file \r\n");
+					long http_res = curl.Upload(uploadurl,up_loadFile);
+					if(http_res == 200){
+						_mManager.upLoadIndex ++;
+						UpdateConfigfile("upLoadIndex",(void *)&_mManager.upLoadIndex,Type_INT);
+					}
+				}else{
+					printf("no file \r\n");
 				}
-			}else{
-				printf("no file \r\n");
 			}
 
-		}
+			
 
-		sleep(10);
+		}
+err1:
+		sleep(2);
 	}
 }
 
