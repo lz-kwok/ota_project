@@ -38,7 +38,8 @@ kc_ferrero::kc_ferrero my_ferrero;
 typedef enum {
 	Type_STRING = 0,
 	Type_INT,
-	Type_BOOL
+	Type_BOOL,
+	Type_ARRAY
 }Json_Type;
 
 
@@ -66,7 +67,7 @@ typedef struct {
 	string otaurl;
 	string md5val;
 	string todayDate;
-	int upLoadIndex;
+	int upLoadIndex[3];
 	string timestamp;
 	struct hal_timeval upLoadTime;
 }mManager;
@@ -211,8 +212,19 @@ std::string ReadConfigfile(const char *config_path)
 	if(document.HasMember("nfs_server")){
 		cout << "nfs_server : " << endl;
 		const rapidjson::Value& nfsValue = document["nfs_server"];
-		for(rapidjson::SizeType i = 0; i < nfsValue.Size(); ++i){
-			cout << "    " << nfsValue[i].GetString() << endl;
+		if(nfsValue.IsArray()){
+			for(rapidjson::SizeType i = 0; i < nfsValue.Size(); ++i){
+				cout << "    " << nfsValue[i].GetString() << endl;
+			}
+		}
+	}
+
+	if(document.HasMember("upLoadIndex")){
+		const rapidjson::Value &uIVal = document["upLoadIndex"];
+		if(uIVal.IsArray()){
+			for(rapidjson::SizeType i = 0; i < uIVal.Size(); ++i){
+				_mManager.upLoadIndex[i] = uIVal[i].GetInt();
+			}
 		}
 	}
 
@@ -234,11 +246,6 @@ std::string ReadConfigfile(const char *config_path)
 	if(document.HasMember("verString")){
 		const rapidjson::Value &vsVal = document["verString"];
 		_mManager.verString = vsVal.GetString();
-	}
-
-	if(document.HasMember("upLoadIndex")){
-		const rapidjson::Value &uIVal = document["upLoadIndex"];
-		_mManager.upLoadIndex = uIVal.GetInt();
 	}
 
 	if(document.HasMember("token")){
@@ -266,10 +273,12 @@ bool UpdateConfigfile(const char *key,void *val,Json_Type jsontype)
 	rapidjson::Document document;
   	document.Parse(str.c_str());
 
-	if(document.HasMember(key)){
-		 document.RemoveMember(key);
+	if(jsontype != Type_ARRAY){
+		if(document.HasMember(key)){
+			document.RemoveMember(key);
+		}
 	}
-
+	
 	if(jsontype == Type_STRING){
 		rapidjson::Value strValue(rapidjson::kStringType);
 		strValue.SetString((const char *)val,document.GetAllocator());
@@ -283,6 +292,13 @@ bool UpdateConfigfile(const char *key,void *val,Json_Type jsontype)
 		Value _key(key, document.GetAllocator());
 		document.AddMember(_key,numValue,document.GetAllocator());
 		printf("add number done\r\n");
+	}else if(jsontype == Type_ARRAY){
+		int *numVal = (int*)val;
+		rapidjson::Value &uIVal = document["upLoadIndex"];
+		for(rapidjson::SizeType i = 0; i < uIVal.Size(); ++i){
+			uIVal[i].SetInt(numVal[i]);
+		}
+		printf("modify array done\r\n");
 	}
 	
 	rapidjson::StringBuffer buffer;
@@ -311,11 +327,11 @@ void *myOTA_run(void *para){
 		}else{
 			_mManager.todayDate = nowDate;
 			UpdateConfigfile("timestamp",(void *)nowDate.c_str(),Type_STRING);
-			if(_mManager.upLoadIndex != 1){
-				_mManager.upLoadIndex = 1;
-				UpdateConfigfile("upLoadIndex",(void *)&_mManager.upLoadIndex,Type_INT);
+			if(_mManager.upLoadIndex[0] != 1){
+				_mManager.upLoadIndex[0] = 1;
+				UpdateConfigfile("upLoadIndex",(void *)&_mManager.upLoadIndex,Type_ARRAY);
 			}
-			
+
 			if(_mManager.processStatus == DEVICE_PROCESS_READY){
 				string code_str = to_string(_mManager.verCode);
 				string upDate_url = getupdate + "lastVersionCode=" + code_str + "&lastVersionName=" + _mManager.verString;
@@ -413,9 +429,9 @@ void *uploadLog_run(void *para){
 	if(!_mManager.timestamp.empty()){
 		if(now_tmp.compare(_mManager.timestamp) != 0){
 			UpdateConfigfile("timestamp",(void *)now_tmp.c_str(),Type_STRING);
-			if(_mManager.upLoadIndex != 1){
-				_mManager.upLoadIndex = 1;
-				UpdateConfigfile("upLoadIndex",(void *)&_mManager.upLoadIndex,Type_INT);
+			if(_mManager.upLoadIndex[0] != 1){
+				_mManager.upLoadIndex[0] = 1;
+				UpdateConfigfile("upLoadIndex",(void *)&_mManager.upLoadIndex,Type_ARRAY);
 			}
 		}
 	}
@@ -556,15 +572,15 @@ void *uploadLog_run(void *para){
 			if(tmp_tv.tv_sec > 10){
 				GetTimeOf_Day(&_mManager.upLoadTime);
 
-				string upload_Index = to_string(_mManager.upLoadIndex);
+				string upload_Index = to_string(_mManager.upLoadIndex[0]);
 				string now_d = my_ferrero.get_nowtime();
 				string up_loadFile = NFS_PATH + upload_Index + "log" + now_d + ".tar.gz";
 				if(access(up_loadFile.c_str(), F_OK ) != -1 ){
 					printf("find file \r\n");
 					long http_res = curl.Upload(uploadurl,up_loadFile);
 					if(http_res == 200){
-						_mManager.upLoadIndex ++;
-						UpdateConfigfile("upLoadIndex",(void *)&_mManager.upLoadIndex,Type_INT);
+						_mManager.upLoadIndex[0] ++;
+						UpdateConfigfile("upLoadIndex",(void *)&_mManager.upLoadIndex,Type_ARRAY);
 					}
 				}else{
 					printf("no file \r\n");
