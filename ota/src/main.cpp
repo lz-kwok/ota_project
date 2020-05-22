@@ -70,6 +70,7 @@ typedef struct {
 	int upLoadIndex[3];
 	string timestamp;
 	struct hal_timeval upLoadTime;
+	string pl_name[3];
 }mManager;
 static mManager _mManager;
 
@@ -219,6 +220,15 @@ std::string ReadConfigfile(const char *config_path)
 		}
 	}
 
+	if(document.HasMember("pl_name")){
+		const rapidjson::Value& nfsValue = document["pl_name"];
+		if(nfsValue.IsArray()){
+			for(rapidjson::SizeType i = 0; i < nfsValue.Size(); ++i){
+				_mManager.pl_name[i] = nfsValue[i].GetString();
+			}
+		}
+	}
+
 	if(document.HasMember("upLoadIndex")){
 		const rapidjson::Value &uIVal = document["upLoadIndex"];
 		if(uIVal.IsArray()){
@@ -329,6 +339,8 @@ void *myOTA_run(void *para){
 			UpdateConfigfile("timestamp",(void *)nowDate.c_str(),Type_STRING);
 			if(_mManager.upLoadIndex[0] != 1){
 				_mManager.upLoadIndex[0] = 1;
+				_mManager.upLoadIndex[1] = 1;
+				_mManager.upLoadIndex[2] = 1;
 				UpdateConfigfile("upLoadIndex",(void *)&_mManager.upLoadIndex,Type_ARRAY);
 			}
 
@@ -574,7 +586,7 @@ void *uploadLog_run(void *para){
 
 				string upload_Index = to_string(_mManager.upLoadIndex[0]);
 				string now_d = my_ferrero.get_nowtime();
-				string up_loadFile = NFS_PATH + upload_Index + "log" + now_d + ".tar.gz";
+				string up_loadFile = NFS_PATH + upload_Index + _mManager.pl_name[0] + now_d + ".tar.gz";
 				if(access(up_loadFile.c_str(), F_OK ) != -1 ){
 					printf("find file \r\n");
 					long http_res = curl.Upload(uploadurl,up_loadFile);
