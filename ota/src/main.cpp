@@ -310,6 +310,12 @@ void *myOTA_run(void *para){
 			printf("%s thread heat beat\r\n",__func__);
 		}else{
 			_mManager.todayDate = nowDate;
+			UpdateConfigfile("timestamp",(void *)nowDate.c_str(),Type_STRING);
+			if(_mManager.upLoadIndex != 1){
+				_mManager.upLoadIndex = 1;
+				UpdateConfigfile("upLoadIndex",(void *)&_mManager.upLoadIndex,Type_INT);
+			}
+			
 			if(_mManager.processStatus == DEVICE_PROCESS_READY){
 				string code_str = to_string(_mManager.verCode);
 				string upDate_url = getupdate + "lastVersionCode=" + code_str + "&lastVersionName=" + _mManager.verString;
@@ -403,6 +409,17 @@ void *uploadLog_run(void *para){
 	}
 	
 	printf("ConfigData = %s\r\n",ConfigData.c_str());
+	string now_tmp = my_ferrero.get_nowtime();
+	if(!_mManager.timestamp.empty()){
+		if(now_tmp.compare(_mManager.timestamp) != 0){
+			UpdateConfigfile("timestamp",(void *)now_tmp.c_str(),Type_STRING);
+			if(_mManager.upLoadIndex != 1){
+				_mManager.upLoadIndex = 1;
+				UpdateConfigfile("upLoadIndex",(void *)&_mManager.upLoadIndex,Type_INT);
+			}
+		}
+	}
+
 
 	while(1){
 		if(_mManager.processStatus == DEVICE_LOGIN_PLATFORM){		//
